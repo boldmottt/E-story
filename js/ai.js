@@ -58,6 +58,7 @@ const AI = {
       return JSON.parse(data.choices[0].message.content);
     } catch(e) {
       console.warn('AI call failed, falling back to demo:', e.message);
+      window.dispatchEvent(new CustomEvent('ai:demo-fallback', { detail: { message: e.message } }));
       return this._demoResponse(messages);
     }
   },

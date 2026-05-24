@@ -37,9 +37,10 @@ const TTS = {
     return this._voices.find(v => v.lang?.startsWith('en')) || this._voices[0] || null;
   },
 
-  setRate(rate) {
+  async setRate(rate) {
     this._rate = rate;
-    saveSettings({ ...this._settings, ttsRate: rate });
+    const settings = await getSettings();
+    saveSettings({ ...settings, ttsRate: rate });
   },
 
   speakWord(word, callback) {

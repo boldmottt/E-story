@@ -49,6 +49,7 @@ a{color:var(--a0);text-decoration:none}
 .topbar-right{display:flex;align-items:center;gap:10px}
 .topbar-btn{background:var(--bg3);border:1px solid var(--bd);color:var(--tx2);padding:6px 12px;border-radius:var(--r-sm);font-size:12px;cursor:pointer;transition:var(--t)}
 .topbar-btn:hover{background:var(--bg4);color:var(--tx)}
+.topbar-btn.active-mode{background:var(--a0);color:#000;border-color:var(--a0)}
 .content{flex:1;overflow-y:auto;padding:24px;display:none}
 .content.active{display:block}
 

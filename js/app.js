@@ -57,6 +57,11 @@ let App = {
     await this.loadBookshelf();
     await this.updateQueueBadge();
     await this.loadSettings();
+    
+    // Listen for AI demo fallback notification
+    window.addEventListener('ai:demo-fallback', (e) => {
+      this.showToast('⚠️ AI 연결 실패, 데모 모드로 대체됨: ' + e.detail.message, 'error');
+    });
   },
 
   async _loadScript(src) {
@@ -169,6 +174,11 @@ let App = {
     const wrap = $('reader-wrap');
     wrap.innerHTML = '';
     
+    // Apply font size from settings
+    getSettings().then(s => {
+      wrap.style.fontSize = (s.fontSize || 16) + 'px';
+    });
+    
     // Header
     const header = document.createElement('div');
     header.className = 'reader-header';
@@ -185,7 +195,7 @@ let App = {
     const modeLabels = ['📖 읽기', '🔊 낭독'];
     modeNames.forEach((m, i) => {
       const btn = document.createElement('button');
-      btn.className = `topbar-btn${m === this.mode ? '' : ''}`;
+      btn.className = `topbar-btn${m === this.mode ? ' active-mode' : ''}`;
       btn.textContent = modeLabels[i];
       btn.style.cssText = `padding:5px 12px;border:1px solid var(--bd);border-radius:6px;background:${m === this.mode ? 'var(--a0)' : 'var(--bg3)'};color:${m === this.mode ? '#000' : 'var(--tx2)'};font-size:12px;cursor:pointer;font-family:var(--font)`;
       btn.onclick = () => this.setReaderMode(m);
@@ -293,8 +303,6 @@ let App = {
     const result = $('hint-result');
     result.style.display = 'block';
     result.textContent = '단어 뜻 불러오는 중...';
-    const data = await AI.wordHint('example', this.selectedSentence.text);
-    // For demo, extract a word from the sentence
     const words = this.selectedSentence.text.split(' ').filter(w => w.length > 3);
     const randomWord = words[Math.floor(Math.random() * words.length)] || 'example';
     const hint = await AI.wordHint(randomWord, this.selectedSentence.text);
@@ -467,10 +475,44 @@ let App = {
 
   async saveWordFromSentence() {
     const words = this.selectedSentence.text.split(' ').filter(w => w.length > 3);
-    const randomWord = words[Math.floor(Math.random() * words.length)] || 'example';
-    await addWord(randomWord, '(뜻을 입력하세요)', this.selectedSentence.text, this.currentBook?.id, this.selectedSentence?.index, '');
-    this.showToast(`"${randomWord}" 단어장에 추가됨!`, 'success');
-    this.updateQueueBadge();
+    if (!words.length) {
+      this.showToast('저장할 단어가 없습니다.', 'error');
+      return;
+    }
+    // Show word selection modal
+    this._showWordSelectModal(words);
+  },
+
+  _showWordSelectModal(words) {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay open';
+    overlay.id = 'vocab-select-modal';
+    overlay.innerHTML = `
+      <div class="modal">
+        <h2>📝 저장할 단어 선택</h2>
+        <p style="font-size:13px;color:var(--tx2);margin-bottom:12px">이 문장에서 단어장에 저장할 단어를 선택하세요:</p>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px">
+          ${words.map((w, i) => `<button class="vocab-select-word" data-word="${escapeHtml(w)}" style="padding:6px 12px;border:1px solid var(--bd);border-radius:var(--r-sm);background:var(--bg3);color:var(--tx);font-size:13px;cursor:pointer;font-family:var(--font);transition:var(--t)">${escapeHtml(w)}</button>`).join('')}
+        </div>
+        <div class="modal-actions">
+          <button class="btn-s" id="vocab-select-cancel">취소</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    
+    overlay.querySelectorAll('.vocab-select-word').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const word = btn.dataset.word;
+        await addWord(word, '(뜻을 입력하세요)', this.selectedSentence.text, this.currentBook?.id, this.selectedSentence?.index, '');
+        this.showToast(`"${word}" 단어장에 추가됨!`, 'success');
+        this.updateQueueBadge();
+        overlay.remove();
+      });
+      btn.addEventListener('mouseenter', () => { btn.style.background = 'var(--bg4)'; btn.style.borderColor = 'var(--a0)'; });
+      btn.addEventListener('mouseleave', () => { btn.style.background = 'var(--bg3)'; btn.style.borderColor = 'var(--bd)'; });
+    });
+    overlay.querySelector('#vocab-select-cancel').addEventListener('click', () => overlay.remove());
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
   },
 
   /* ===== Study Queue ===== */
@@ -492,18 +534,32 @@ let App = {
     }
     
     items.forEach(item => {
-      list.innerHTML += `
-        <div class="queue-item" data-id="${item.id}">
-          <div class="qi-text">${escapeHtml(item.text)}</div>
-          <div class="qi-meta">${new Date(item.createdAt).toLocaleDateString()}</div>
-          <button class="qi-action" onclick="App.studyFromQueue(${item.id}, '${escapeHtml(item.text)}')">공부하기</button>
-        </div>`;
+      const div = document.createElement('div');
+      div.className = 'queue-item';
+      div.dataset.id = item.id;
+      div.dataset.sentenceId = item.sentenceId ?? 0;
+      div.dataset.text = item.text;
+      div.innerHTML = `
+        <div class="qi-text">${escapeHtml(item.text)}</div>
+        <div class="qi-meta">${new Date(item.createdAt).toLocaleDateString()}</div>
+        <button class="qi-action">공부하기</button>`;
+      list.appendChild(div);
+    });
+    list.addEventListener('click', (e) => {
+      const btn = e.target.closest('.qi-action');
+      if (!btn) return;
+      const itemEl = btn.closest('.queue-item');
+      if (!itemEl) return;
+      const id = parseInt(itemEl.dataset.id);
+      const sentenceId = parseInt(itemEl.dataset.sentenceId);
+      const text = itemEl.dataset.text;
+      this.studyFromQueue(id, sentenceId, text);
     });
   },
 
-  async studyFromQueue(id, text) {
+  async studyFromQueue(id, sentenceId, text) {
     await markQueueDone(id);
-    this.selectedSentence = { index: 0, text };
+    this.selectedSentence = { index: sentenceId || 0, text };
     this.openStudy();
     await this.renderQueue();
     await this.updateQueueBadge();

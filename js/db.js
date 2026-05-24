@@ -71,8 +71,17 @@ async function getSentences(chunkId) {
 
 function splitIntoChunks(text) {
   // Try chapter/section headings
-  const chapterRegex = /(?:^|\n)(?:CHAPTER|Chapter|chapter|Section|PART|Part)\s+[\w\s,.!?]+(?:\n|$)/g;
+  // Prologue/Epilogue도 포함, OCR 노이즈(파이프| 등) 허용, 목차 줄(숫자 여러개) 제외
+  const chapterRegex = /(?:^|\n)(?:(?:CHAPTER|Chapter|chapter)\s+[\w\s,.!?'"|—–-]+|Prologue|ProLoGuE|Epilogue)(?:\n|$)/g;
   let matches = [...text.matchAll(chapterRegex)];
+  
+  // 필터: 목차 줄(챕터 숫자가 여러 개 포함된 줄) 제외
+  matches = matches.filter(m => {
+    const text = m[0];
+    const chapterNums = text.match(/\d+/g);
+    // 챕터 숫자가 2개 이상이면 목차 줄
+    return !(chapterNums && chapterNums.length >= 2);
+  });
   
   if (matches.length < 2) {
     // Fallback: split by double newlines into reasonable chunks
@@ -227,9 +236,19 @@ async function exportData() {
 
 async function importData(json) {
   const data = JSON.parse(json);
+  // Validate structure before deleting
+  const expectedTables = ['books','chunks','sentences','vocabulary','feedbackSessions','translationAttempts','studyQueue','highlights','settings'];
+  for (const table of expectedTables) {
+    if (data[table] !== undefined && !Array.isArray(data[table])) {
+      throw new Error(`Invalid format: "${table}" is not an array`);
+    }
+  }
+  if (!data.books?.length && !data.vocabulary?.length && !data.studyQueue?.length) {
+    throw new Error('Invalid backup: no recognizable data found');
+  }
   await DB.delete();
   await DB.open();
-  for (const table of ['books','chunks','sentences','vocabulary','feedbackSessions','translationAttempts','studyQueue','highlights','settings']) {
+  for (const table of expectedTables) {
     if (data[table]?.length) await DB[table].bulkAdd(data[table]);
   }
 }

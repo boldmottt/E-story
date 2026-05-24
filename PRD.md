@@ -1,175 +1,174 @@
-# E-Story — 기획서 (PRD) v1.1
+# E-Story — 기획서 (PRD) v1.2
 
-> **프로젝트명:** E-Story
-> **목표:** txt 원서를 읽다가 문장을 선택하고, 직접 한국어 해석을 쓴 뒤, AI에게 한 포인트씩 교정받는 **Local-first** 영어 독해 훈련 앱
+> **목표:** "이야기는 계속 읽고, 막히는 영어만 AI와 함께 공부하는 원서 리더"
+> **슬로건:** Story-first, Study-on-demand
 > **위치:** `./E-Story/`
-> **버전:** v1.1 (2026-05-25)
-> **MVP 목표:** AI 피드백 리더 — 그 외 기능은 Post-MVP
+> **버전:** v1.2 (2026-05-25)
 
 ---
 
 ## 1. 제품 개요
 
 ### 1.1 한 줄 설명
-> **"원서를 읽으면서 내가 직접 해석해보고, AI가 한 포인트씩 교정해주는 영어 독해 훈련 앱"**
+> **"재미는 끊지 않고, 어려운 문장만 똑똑하게 공부하는 원서 앱"**
 
 ### 1.2 타겟 사용자
-- 영어 원서 읽기에 도전하는 중급자 (토익 700~900, 수능 2~3등급)
-- 문법/단어는 어느 정도 알지만 "실제 문장을 제대로 해석"하는 게 어려운 학습자
-- 수동적인 단어 암기가 아닌 **능동적인 해석 훈련**을 원하는 사람
+- 영어 원서 읽기에 도전하는 중급자
+- "읽고 싶은데 모르는 게 자꾸 나와서 포기"한 경험이 있는 사람
+- 수동적인 단어 암기가 아닌 **스토리와 함께 영어 실력이 느는 경험**을 원하는 사람
 
 ### 1.3 핵심 가치
-1. **능동 학습** — 답을 먼저 보여주지 않고 사용자가 먼저 쓰게 한다
-2. **한 번에 하나씩** — 피드백을 쏟아붓지 않고 한 포인트씩 교정
-3. **읽기와 학습의 균형** — 몰입을 깨지 않으면서 학습 포인트를 제공
-4. **Local-first** — 책, 단어장, 피드백 이력은 로컬 IndexedDB에 저장. 단, AI 피드백/사전 검색은 외부 API 호출 필요
-
-### 1.4 Non-goals (MVP에서 하지 않을 것)
-- PDF/EPUB 지원하지 않음
-- 클라우드 동기화 없음
-- 사용자 계정 없음
-- 페이지 전체 문법 분석은 제공하지 않음
-- 정교한 통계 대시보드는 제공하지 않음
-- 속독(RSVP) 모드 제공하지 않음
+1. **Story-first** — 사용자가 문제를 푸는 느낌보다 이야기를 읽는 느낌을 우선한다
+2. **Study-on-demand** — 공부는 강제하지 않고, 사용자가 막히거나 궁금할 때 시작된다
+3. **No Spoiler** — AI는 현재 읽은 위치 이후의 내용을 절대 말하지 않는다
+4. **한 번에 하나씩** — AI 피드백을 한 포인트씩 교정
+5. **Local-first** — 모든 데이터는 브라우저 IndexedDB에 저장
+6. **몰입 보호** — 학습 기능이 독서 경험을 방해하지 않도록 설계
 
 ---
 
-## 2. MVP 기능 (P0 ~ P1)
+## 2. 읽기 모드 (3가지)
 
-### 2.1 P0 — 반드시 포함
+### 2.1 Story Mode (기본, 몰입 독서)
+- 우측 학습 패널 숨김
+- 문장/단어 클릭 시 **작은 팝업**으로 빠른 힌트만 제공
+- 공부는 사용자가 원할 때만 시작
 
-| 기능 | 설명 |
-|------|------|
-| **txt 업로드** | .txt 파일 선택 → IndexedDB에 내용 저장. 인코딩 자동 감지 |
-| **책 목록/진행률** | Bookshelf: 책 목록, 각 책의 읽기 진행률, 이어 읽기 |
-| **리더 뷰** | 깔끔한 타이포그래피, 다크모드/폰트/간격 조절, 문장 단위 표시 |
-| **문장 선택** | 클릭으로 문장 선택 + 드래그로 범위 선택 모두 지원 |
-| **해석 입력** | 선택 문장을 우측/하단 패널에 표시 + 사용자 해석 입력창 |
-| **AI one-point 피드백** | 한 번에 **하나의 포인트만** 지적. JSON 응답으로 안정적 처리 |
-| **피드백 반복 루프** | 수정 → 재제출 → 다음 포인트 → "충분하다"까지 반복 |
-| **추천 해석 비교** | 루프 종료 시에만 사용자 해석 vs AI 추천 해석 병렬 비교 |
-| **피드백 이력 저장** | 모든 시도 저장 (feedbackSessions + translationAttempts) |
+**문장 클릭 팝업 — 힌트 사다리:**
+```
+[📖 단어 뜻] [🔍 구문 힌트] [📋 문장 요지] [✍️ 해석해보기] [⏰ 나중에 공부]
+```
 
-### 2.2 P1 — 중요하지만 MVP 범위
+| 단계 | 기능 | 목적 |
+|:----:|------|------|
+| 1 | 단어 뜻 팝업 | 몰입을 거의 안 끊고 이해 보조 |
+| 2 | 구문 힌트 | 문장 구조만 살짝 알려줌 |
+| 3 | 문장 요지 | 전체 번역 대신 핵심 의미만 |
+| 4 | ✍️ 해석해보기 | Study Mode 진입 |
+| ⏰ | 나중에 공부 | Study Queue에 저장 후 계속 읽기 |
 
-| 기능 | 설명 |
-|------|------|
-| **단어 저장** | 피드백 중 모르는 단어 1클릭 저장 (컨텍스트 포함) |
-| **단어 발음 TTS** | Web Speech API로 단어/문장 발음 듣기 |
-| **기본 단어장** | 저장된 단어 목록, 검색, 학습 상태 표시 |
-| **백업/복원** | IndexedDB 데이터 → JSON 내보내기 / 불러오기 |
+### 2.2 Study Mode (집중 학습)
+- 선택한 문장을 직접 해석
+- AI one-point 피드백 루프 실행
+- 추천 해석(구조/자연)은 루프 종료 후 공개
+- 이 모드는 사용자가 **명시적으로 선택할 때만** 진입
+
+### 2.3 Review Mode (복습)
+- Study Queue에 저장한 문장/단어를 모아서 복습
+- 피드백 이력 기반 약점 포인트 복습
+- "오늘 저장한 N개 공부하기"
 
 ---
 
-## 3. Post-MVP (확장 기능)
+## 3. 핵심 기능
 
-| 기능 | 이유 |
-|------|------|
-| **문법 분석 모드** | LLM span 매핑 렌더링 난이도 높음. MVP 검증 후 추가 |
-| **챕터 복습 퀴즈** | 핵심 학습 루프 검증 후 추가해도 늦지 않음 |
-| **약점 요약** | 피드백 데이터가 충분히 쌓인 후 가치가 생김 |
-| **SRS 고도화** | 처음에는 단어장 + 간단 복습으로 충분 |
-| **통계 대시보드** | Post-MVP |
-| **TTS 낭독 모드** | (문장 클릭 재생은 P0/P1에 포함 검토) |
+### 3.1 텍스트 업로드 및 관리
+- `.txt` 파일 업로드 (인코딩 자동 감지)
+- 챕터/페이지 단위 분할
+- Bookshelf: 책 목록, 진행률, 이어 읽기
+- 재방문 시 읽던 위치 자동 복원
+- **"Previously on..."** 이어 읽기 기능 (챕터 복귀 시 지난 이야기 요약)
+
+### 3.2 TTS (Text-to-Speech)
+- Web Speech API (브라우저 내장, 무료)
+- 단어 발음: 팝업의 🔊 버튼
+- 문장 발음: 문장 아래 🔊 버튼
+- 낭독 모드: 재생/일시정지/속도 조절, 문장 클릭 → 해당 위치부터 재생
+- macOS Samantha 음성 우선
+
+### 3.3 AI 힌트 사다리 & 피드백
+
+#### 3.3.1 힌트 사다리 (Story Mode)
+사용자가 문장을 클릭하면 5단계 힌트 제공:
+1. **단어 힌트:** 클릭한 단어의 뜻 (Free Dictionary API + AI)
+2. **구문 힌트:** 문장 구조 간략 설명
+3. **문장 요지:** 전체 번역 대신 핵심 의미 (스포일러 없이)
+4. **해석해보기:** Study Mode 진입
+5. **나중에 공부:** Study Queue 저장
+
+#### 3.3.2 AI 피드백 루프 (Study Mode)
+```
+원문 표시 → 사용자 해석 입력 → AI가 한 포인트만 지적 → 수정 → 반복 → 종료
+```
+
+**AI 피드백 원칙:**
+1. 한 번에 **하나의 포인트만** 지적
+2. 의미 → 뉘앙스/말투 → 문법 → 자연스러운 표현 순서로 우선순위
+3. L1 간섭 코멘트 자연스럽게 포함
+4. 죽음의 스포일러 금지 (No-spoiler 규칙)
+5. 종료 시에만 추천 해석 공개
+
+#### 3.3.3 Story Buddy (AI 독서 친구)
+문장/문단 선택 후 질문 가능:
+```
+[지금 무슨 상황이야?]
+[누가 말하는 중이야?]
+[이 표현이 왜 중요해?]
+[분위기가 어때?]
+[문화/시대 배경 설명]
+[영어 표현만 설명]
+```
+
+**No-spoiler 규칙 (필수):**
+```
+Use only the provided text and the user's current reading progress.
+Never mention events, relationships, or outcomes that occur after the user's current position.
+Even if you know the book, do not use outside knowledge.
+If the answer requires future context, say: "현재까지의 내용만으로는 확실하지 않아요."
+```
+
+### 3.4 Study Queue (나중에 공부하기)
+- 문장/단어를 1클릭으로 Queue에 저장
+- 저장 후 즉시 리더로 복귀 (몰입 유지)
+- 챕터/세션 종료 시 "오늘 저장한 N개 공부하기" 알림
+- 저장된 문장으로 AI 피드백 루프 복습 가능
+
+### 3.5 단어장
+- 단어 + 뜻 + 원문 문장 + **장면 설명 + 등장인물 + 말투**
+- 학습 상태: New / Learning / Known
+- SRS 복습 (3-Box Leitner)
+- 단어 발음 TTS
+- **장면 기반 복습:** 단어가 나온 장면을 함께 떠올리게 설계
+
+### 3.6 피드백 이력 및 약점 요약
+- 모든 피드백을 날짜순 저장
+- "최근 피드백 요약해줘" AI 명령
+- 추후 데이터 기반 정형 대시보드 (Post-MVP)
+
+### 3.7 챕터 종료 요약 (Post-MVP)
+```
+1. 이번 챕터 3줄 요약 (No-spoiler)
+2. 주요 등장인물 변화
+3. 중요한 장면 1~2개
+4. 오늘의 표현 3개
+5. 공부하면 좋은 문장 1개
+```
 
 ---
 
 ## 4. 기술 설계
 
 ### 4.1 배포 방식
-
 ```
-권장 실행 방식:
-  python3 -m http.server 8000
-  → http://localhost:8000 접속
-
-⚠ file:// 직접 실행:
-  - 브라우저별 file:// origin 처리 차이가 있음
-  - IndexedDB가 제한될 수 있음
-  - 외부 API 호출 시 CORS 문제 가능
-  - 지원은 하지만 안정성 보장 어려움
+권장: python3 -m http.server 8000
+⚠ file:// 실행 시 브라우저별 제약 있음
 ```
 
-### 4.2 "완전 로컬"이 아닌 이유
-
-이 앱은 **완전 오프라인 앱이 아니라 Local-first 앱**입니다.
-
-| 기능 | 네트워크 필요? | 이유 |
-|------|:---:|------|
-| 책/단어장/이력 저장 | ❌ | IndexedDB 로컬 저장 |
-| AI 피드백 | ✅ | 사용자 API 키로 외부 AI 호출 |
-| 사전 검색 | ✅ | Free Dictionary API |
-| TTS | ❌ | Web Speech API (브라우저 내장) |
-| Google Fonts | ✅ (첫 로딩) | CDN 로딩 |
-
-### 4.3 문장 분할 전략
-
-문장 분할 품질이 전체 UX를 결정합니다.
-
-```
-1. 기본적으로 문단 단위로 나눈다
-2. 문단 내부는 sentence splitter로 분리
-3. 약어 예외 목록: Mr., Mrs., Dr., St., etc.
-4. 사용자가 드래그로 직접 범위 선택 가능 → 자동 분할 실패 보완
-```
-
-### 4.4 BYOK (Bring Your Own Key)
-
-**보안 주의사항:**
-- API 키를 IndexedDB에 평문 저장 시 XSS 탈취 위험
-- 외부 CDN 스크립트 사용 시 키 노출 가능성
-- AI 제공업체별 CORS 정책 확인 필요
-
-**API 키 저장 UX:**
-```
-API 키 저장 방식:
-[●] 이번 세션에서만 사용 (기본값, 안전)
-[○] 브라우저에 저장 (위험을 이해했습니다)
-```
-
-### 4.5 파일 저장 정책
-
-```
-업로드된 txt 파일은 브라우저가 직접 프로젝트 폴더에 저장하지 않는다.
-파일 내용은 IndexedDB에 저장한다.
-(로컬 파일 시스템 접근은 브라우저 보안상 불가능)
-```
-
----
-
-## 5. AI 피드백 설계
-
-### 5.1 System Prompt
-
-```
-You are an English tutor for a Korean learner.
-
-The learner reads an English sentence from a novel and writes a Korean translation.
-
-Your job:
-- Give feedback in Korean.
-- Point out exactly ONE issue per response.
-- Focus on meaning first, then grammar, then naturalness.
-- Do not reveal the full model translation unless finishRequested is true.
-- If the user's translation fixes the previous issue, move to the next point.
-- If the current translation is good enough, say so and suggest finishing.
-- Avoid nitpicking style differences when meaning is already correct.
-- 💡 If the mistake is typical for Korean learners, add a brief L1 note.
-
-Return JSON only.
-```
-
-### 5.2 JSON 응답 형식
+### 4.2 AI 응답 JSON 형식 (Study Mode)
 
 ```json
 {
   "status": "needs_revision" | "good_enough" | "finished",
-  "issueType": "meaning" | "grammar" | "tense" | "article" | "preposition" | "word_choice" | "structure" | "naturalness" | "none",
-  "feedbackKo": "한국어 피드백 (2~3문장)",
+  "issueType": "meaning" | "grammar" | "tense" | "article" | "preposition" | 
+               "word_choice" | "structure" | "naturalness" | "idiom" | "nuance" | 
+               "tone" | "cultural_context" | "implied_meaning" | "none",
+  "feedbackKo": "한국어 피드백 (2~3문장, 한 번에 하나만)",
   "hintKo": "짧은 힌트",
   "l1InterferenceKo": null,
   "shouldShowModelTranslation": false,
-  "modelTranslationKo": null
+  "literalTranslationKo": null,
+  "naturalTranslationKo": null,
+  "storyNoteKo": null
 }
 ```
 
@@ -177,215 +176,162 @@ Return JSON only.
 ```json
 {
   "status": "finished",
-  "issueType": "none",
-  "feedbackKo": "좋아요. 이제 추천 해석과 비교해볼게요.",
-  "hintKo": null,
-  "l1InterferenceKo": null,
-  "shouldShowModelTranslation": true,
-  "modelTranslationKo": "추천 해석..."
+  "literalTranslationKo": "구조를 살린 직역...",
+  "naturalTranslationKo": "스토리처럼 읽히는 의역...",
+  "storyNoteKo": "이 문장의 뉘앙스/재미/장면상 의미..."
 }
 ```
 
-### 5.3 이전 피드백 컨텍스트 전달
-
-```json
-{
-  "originalSentence": "...",
-  "userTranslation": "...",
-  "previousIssues": [
-    {"type": "passive_voice", "resolved": true},
-    {"type": "article", "resolved": false}
-  ]
-}
-```
-
-### 5.4 "모범 해석" 대신 "추천 해석"
-
-문학 번역에는 정답이 하나가 아닙니다.
-- ~~모범 해석~~ → **추천 해석**
-- ~~정답~~ → **참고 해석**
-- ~~틀린 부분~~ → **개선 포인트**
-
-톤은 "채점기"보다 "튜터"에 가깝게.
+### 4.3 BYOK (Bring Your Own Key)
+- API 키 세션 전용 저장 기본값 (안전)
+- AI 피드백 + 사전 검색에 사용
+- No-spoiler 규칙 프롬프트에 포함
 
 ---
 
-## 6. 데이터 모델
+## 5. 데이터 모델
 
 ```javascript
 {
-  books: {
-    id, title, fileName, sourceHash, encoding,
-    totalChunks, currentChunk, currentOffset,
-    createdAt, updatedAt
-  },
+  books: { id, title, fileName, sourceHash, encoding,
+    totalChunks, currentChunk, currentOffset, createdAt, updatedAt },
 
-  chunks: {
-    id, bookId, index, title, content,
-    startOffset, endOffset, createdAt
-  },
+  chunks: { id, bookId, index, title, content, startOffset, endOffset },
 
-  sentences: {
-    id, bookId, chunkId, index, text,
-    startOffset, endOffset
-  },
+  sentences: { id, bookId, chunkId, index, text, startOffset, endOffset },
 
-  feedbackSessions: {
-    id, bookId, sentenceId, originalSentence,
-    status: "active" | "finished",
-    finalUserTranslation, modelTranslation,
-    createdAt, updatedAt
-  },
+  feedbackSessions: { id, bookId, sentenceId, originalSentence,
+    status, finalUserTranslation, literalTranslation, naturalTranslation,
+    storyNote, createdAt, updatedAt },
 
-  translationAttempts: {
-    id, sessionId, attemptNo,
-    userTranslation,
-    aiStatus, issueType,
-    feedbackKo, hintKo, l1InterferenceKo,
-    createdAt
-  },
+  translationAttempts: { id, sessionId, attemptNo, userTranslation,
+    aiStatus, issueType, feedbackKo, hintKo, l1InterferenceKo, createdAt },
 
-  vocabulary: {
-    id, word, lemma, meaningKo, definitionEn,
+  vocabulary: { id, word, lemma, meaningKo, definitionEn,
     partOfSpeech, pronunciation, audioUrl,
-    sentenceId, contextSentence, bookId,
-    status: "new" | "learning" | "known",
-    reviewBox: 0,  // 0=new, 1=today, 2=3day, 3=7day
-    nextReview: Date,
-    addedAt, updatedAt
-  },
+    contextSentence, sceneNote, characterNames, tone,
+    sentenceId, bookId, status, reviewBox, nextReview, addedAt, updatedAt },
 
-  grammarAnalyses: {
-    id, sentenceId, model, sourceHash,
-    spans: [{ start, end, text, label }],
-    createdAt
-  },
+  studyQueue: { id, bookId, sentenceId, text,
+    reason: "word"|"sentence"|"grammar"|"story"|"unknown",
+    status: "pending"|"reviewed"|"dismissed", createdAt, reviewedAt },
 
-  settings: {
-    id, theme, fontSize, lineHeight,
-    ttsRate, aiProvider, apiKeyStorageMode
-  }
-}
-```
+  highlights: { id, bookId, sentenceId, text, userTranslation,
+    note, tags: [], createdAt, updatedAt },
 
-### 피드백 이력 조회
-별도 테이블 없이 `feedbackSessions + translationAttempts`로 조회 가능.
+  storyMemories: { id, bookId, upToChunk, summaryKo,
+    characters: [{ name, description, lastKnownState }],
+    openQuestions: [], createdAt, updatedAt },
 
----
+  readingSessions: { id, bookId, startedAt, endedAt,
+    startChunk, endChunk, mode, savedToQueueCount },
 
-## 7. TTS (Text-to-Speech)
-
-- **Web Speech API** 사용 (브라우저 내장, 무료)
-- 단어 발음: 단어 팝업의 🔊 버튼
-- 문장 발음: 문장 아래 🔊 듣기 버튼
-- **낭독 모드**: 재생/일시정지/속도 조절 (0.5x~2.0x)
-- **문장 클릭 → 해당 문장부터 재생 시작** + 자동 스크롤
-- macOS Samantha 음성 우선, fallback 처리
-- 브라우저/OS별 음성 목록 차이를 고려한 fallback 필수
-
----
-
-## 8. 단어장
-
-### 사전 검색
-- **Free Dictionary API**: 발음/품사/영영 정의용
-- **한국어 뜻**: AI에게 요청 또는 사용자 직접 입력
-- 캐싱: 같은 단어 재호출 방지
-
-### 단어장 필드
-```javascript
-{
-  word, lemma,
-  meaningKo,        // 한국어 뜻
-  definitionEn,     // 영어 정의 (Free Dictionary API)
-  partOfSpeech,     // 품사
-  pronunciation,    // 발음 기호
-  audioUrl,         // 발음 파일 URL
-  contextSentence   // 원문 문장
+  settings: { id, theme, fontSize, lineHeight, ttsRate, aiProvider, apiKeyStorageMode }
 }
 ```
 
 ---
 
-## 9. UX 설계
+## 6. MVP 범위 (v1)
 
-### 9.1 레이아웃
-```
-데스크톱: 좌측 리더 + 우측 해석 패널
-태블릿/모바일: 리더 + 하단 슬라이드 패널
-```
+### P0 — 반드시 포함
+| 기능 | 설명 |
+|------|------|
+| txt 업로드 + Bookshelf | 파일 업로드, 책 목록, 진행률 |
+| 리더 뷰 | Story Mode 기본, 다크모드/폰트 조절 |
+| TTS (기본) | 단어/문장 발음 듣기 |
+| 문장 클릭 → 힌트 사다리 | 단어힌트 → 구문힌트 → 요지 → 해석 → 저장 |
+| AI one-point 피드백 루프 | Study Mode 핵심 |
+| 추천 해석 (구조 + 자연) | 루프 종료 후 비교 |
+| 나중에 공부하기 (Study Queue) | 1클릭 저장 + 세션 종료 후 알림 |
+| 단어장 + SRS 기본 | 저장/검색/3-Box 복습 |
+| No-spoiler AI 규칙 | 프롬프트에 포함 |
+| 피드백 이력 저장 | 모든 시도 저장 |
+| 백업/복원 | JSON 내보내기/가져오기 |
 
-### 9.2 학습 루프 버튼
-- **다시 제출** — 수정 후 재제출
-- **이 정도면 종료** — AI가 "충분하다"고 하면 활성화
-- **추천 해석 보기** — 종료 시 표시
-- **단어장에 저장** — 1클릭 저장
-- **이 문장 건너뛰기** — 패널 닫기
-
-### 9.3 문법 분석 (Post-MVP, v1에서는 선택 문장만)
-```
-MVP용 축소안:
-  - 사용자가 선택한 한 문장만 분석
-  - 주어/동사/목적어/수식어만 표시
-  - 색상 + 라벨 병행 (색맹 대비)
-  - 결과 캐시
-  
-span 형식 (character offset 사용):
-  { start: 0, end: 2, text: "It", label: "subject" }
-  { start: 3, end: 5, text: "is", label: "verb" }
-```
-
----
-
-## 10. 일정 (8일)
-
-| 일자 | 작업 |
-|:---:|------|
-| **Day 1** | 앱 구조, IndexedDB 초기화, 설정, 파일 업로드, Bookshelf |
-| **Day 2** | 리더 뷰, chunk/sentence 분할, 진행률 저장 |
-| **Day 3** | 문장 선택, 해석 패널, 해석 draft 저장 |
-| **Day 4** | AI Provider 설정, one-point 피드백 루프 |
-| **Day 5** | 피드백 세션/이력 저장, 추천 해석 비교 뷰 |
-| **Day 6** | 단어장, 단어 저장, 기본 검색, 사전 API |
-| **Day 7** | TTS (단어/문장 발음), UI 마감 |
-| **Day 8** | JSON 백업/복원, 에러 처리, 테스트 |
-
-### Stretch Goals (시간 남으면)
-- TTS 낭독 모드 (문장 클릭 재생, 속도 조절)
-- 다크모드 완성
+### P1 — MVP 범위 (시간 허용 시)
+| 기능 | 설명 |
+|------|------|
+| Story Buddy | 문장 선택 후 맥락/분위기 질문 |
+| 챕터 3줄 요약 | 챕터 완료 시 자동 요약 |
+| Previously on | 재방문 시 지난 이야기 요약 |
+| 장면 기반 단어장 | 단어 + 장면/인물 정보 |
+| 하이라이트/내 번역 저장 | 마음에 드는 문장 저장 |
 
 ### Post-MVP
-- 문법 분석 모드
+- 문법 분석 모드 (선택 문장만)
 - 챕터 복습 퀴즈
-- 약점 요약
-- 통계 대시보드
+- 약점 요약 대시보드
+- 통계
+- PDF/EPUB
+- 클라우드 동기화
 
 ---
 
-## 11. 개인정보 및 저작권 안내
+## 7. UX 흐름
 
-```text
-AI 피드백 사용 시 선택한 문장과 사용자의 해석이 AI 제공업체로 전송된다.
-저작권이 있는 텍스트를 사용할 경우 사용자는 해당 텍스트의 이용 조건을 확인해야 한다.
+### 읽는 중 (Story Mode)
+```
+영어 원서 읽는 중
+  → 어려운 문장 클릭
+  → 작은 팝업: [단어힌트][구문힌트][요지][해석해보기][⏰나중에]
+```
+
+### 몰입 유지
+```
+[요지만 보기] 클릭
+  → "이 문장은 OOO을 의미합니다"
+  → 계속 읽기
+```
+
+### 공부하고 싶을 때
+```
+[해석해보기] 클릭
+  → Study Mode 패널 열림
+  → 직접 해석 입력
+  → AI가 한 포인트만 피드백
+  → 수정 → 반복 → 종료 → 구조해석/자연해석/story note 비교
+```
+
+### 나중에 공부
+```
+⏰ 클릭 → Study Queue에 저장 → 바로 리더 복귀
+세션 종료 → "오늘 저장한 5개 문장 공부할까요?"
 ```
 
 ---
 
-## 12. 오픈소스/무료 리소스
-
-| 리소스 | 용도 | 라이선스 |
-|--------|------|---------|
-| Dexie.js | IndexedDB wrapper | Apache 2.0 |
-| Free Dictionary API | 단어 검색 | 무료 |
-| Web Speech API | TTS | 브라우저 내장 |
-| jschardet | 인코딩 감지 | LGPL |
-| Google Fonts | 타이포그래피 | SIL Open Font |
+## 8. Non-goals (MVP에서 하지 않을 것)
+- PDF/EPUB 지원
+- 클라우드 동기화
+- 사용자 계정
+- 페이지 전체 문법 분석
+- 통계 대시보드
+- 등장인물 관계도
+- 자동 타임라인
+- 챕터 퀴즈 (Post-MVP)
 
 ---
 
-## 13. 변경 이력
+## 9. 일정 (8일)
+
+| Day | 작업 |
+|:---:|------|
+| 1 | 앱 구조, IndexedDB, 파일 업로드, Bookshelf |
+| 2 | 리더 뷰, chunk/sentence 분할, Story Mode 기본 |
+| 3 | 문장 클릭 → Quick Menu (힌트 사다리) + TTS |
+| 4 | AI Provider 설정, one-point 피드백 루프 |
+| 5 | 추천 해석 비교 (구조/자연/story note) |
+| 6 | Study Queue + 단어장 + SRS |
+| 7 | No-spoiler 적용 + 피드백 이력 + UI 마감 |
+| 8 | JSON 백업/복원 + 테스트 |
+
+---
+
+## 10. 변경 이력
 
 | 버전 | 날짜 | 변경 내용 |
 |:----:|:----:|-----------|
-| v1.0 | 2026-05-25 | 초안 작성 |
-| v1.1 | 2026-05-25 | MVP 범위 축소 (문법분석/퀴즈/통계 → Post-MVP). "완전 로컬"→"Local-first" 수정. AI 피드백 JSON 형식 명시. 데이터 모델 feedbackSessions+attempts 통합. file:// 리스크 문서화. BYOK 보안 주의사항 추가. "모범 해석"→"추천 해석". Non-goals 명시. 백업/복원 추가. 일정 현실화. 문장 분할 전략 추가. |
+| v1.0 | 2026-05-25 | 초안 |
+| v1.1 | 2026-05-25 | MVP 축소, Local-first 정정, JSON 형식, 데이터 모델 통합 |
+| v1.2 | 2026-05-25 | **Story-first 방향 전환**. Story/Study/Review 모드 분리. 힌트 사다리. Study Queue. No-spoiler 규칙. 구조+자연 해석 분리. Story Buddy. 장면 기반 단어장. Previously on. |

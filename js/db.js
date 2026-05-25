@@ -118,8 +118,10 @@ async function getSentences(chunkId) {
 
 // L5: Better chunk split — use character count not fixed 10 parts
 function splitIntoChunks(text) {
-  // Try chapter/section headings
-  const chapterRegex = /(?:^|\n)(?:(?:CHAPTER|Chapter|chapter)\s+[\w\s,.!?'"—–-]+|Prologue|ProLoGuE|Epilogue|PART\s+\w+)(?:\n|$)/g;
+  // Try chapter/section headings (case-insensitive). Must start a line.
+  // Covers: "Chapter 1", "CHAPTER IV: ...", "Part One", "PART 2", "Book I",
+  // and standalone front/back-matter headings.
+  const chapterRegex = /(?:^|\n)[ \t]*(?:(?:chapter|part|book)\s+[\w][^\n]{0,60}|prologue|epilogue|introduction|preface|foreword)[ \t]*(?=\n|$)/gi;
   let matches = [...text.matchAll(chapterRegex)];
   
   // Filter out table of contents lines (multiple numbers)

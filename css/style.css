@@ -253,12 +253,47 @@ a{color:var(--a0);text-decoration:none}
 
 /* ===== Responsive ===== */
 @media(max-width:768px){
-  .sidebar{width:56px;min-width:56px}
-  .sidebar .nav-item span{display:none}
-  .sidebar-head{font-size:0;justify-content:center}
-  .sidebar-head::after{content:'ES';font-size:14px}
-  .study-panel{width:100%}
-  .compare-view .cv-row{grid-template-columns:1fr}
+  /* 1. Sidebar → bottom tabbar */
+  .sidebar{position:fixed;bottom:0;left:0;right:0;width:100%;height:56px;min-width:0;flex-direction:row;border-top:1px solid var(--bg3);border-right:none;z-index:20}
+  .sidebar-head,.sidebar-foot{display:none}
+  .sidebar-nav{flex-direction:row;justify-content:space-around;width:100%;height:100%;padding:0}
+  .nav-item{flex-direction:column;gap:2px;padding:8px 4px;font-size:10px;border-radius:0}
+  .nav-item .ico{font-size:20px;width:auto}
+  .nav-item span:not(.ico):not(.queue-badge){font-size:10px;white-space:nowrap}
+
+  /* 2. Main area */
+  .main{margin-left:0;padding-bottom:64px}
+
+  /* 3. Topbar */
+  .topbar{padding:8px 12px}
+  .topbar-title{font-size:14px}
+
+  /* 4. Content area */
+  .content{padding:12px}
+  .bookshelf{grid-template-columns:1fr}
+  .upload-area{padding:32px 16px}
+
+  /* 5. Reader */
+  .reader-wrap{padding:12px}
+  .ch-nav-btn{font-size:12px;padding:6px 10px}
+
+  /* 6. Quick Menu */
+  .quick-menu.open{position:fixed;bottom:64px;left:8px;right:8px;width:auto !important;max-width:none}
+
+  /* 7. Study Panel */
+  .study-panel.open{width:100%;max-width:100%;right:0;bottom:64px}
+
+  /* 8. Settings */
+  .settings-row{flex-direction:column;align-items:stretch;gap:4px}
+  .settings-row input,.settings-row select{width:100% !important}
+
+  /* 9. Toast */
+  .toast-container{bottom:72px;right:12px}
+
+  /* 10. Touch optimization */
+  button,.btn,.topbar-btn,.ch-nav-btn,.mode-btn,.buddy-btn,.vocab-select-word,.study-submit,.review-btn,.queue-item .qi-action{min-height:40px}
+  .qm-word{padding:6px 10px}
+  input,select,textarea{font-size:16px}
 }
 .hidden-input{display:none}
 .flex-row{display:flex;gap:8px}

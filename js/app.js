@@ -1,16 +1,20 @@
-/* E-Story Main App */
+/* E-Story Main App — v2: No-spoiler, reading position, word click */
 const $ = id => document.getElementById(id);
 
 let App = {
   currentView: 'bookshelf',
   currentBook: null,
   currentChunk: null,
+  currentSelectedChunkIndex: 0,
+  currentChunks: [],
   currentSentences: [],
   selectedSentence: null,
+  selectedWord: null,
   bookData: null,
   feedbackAttempts: [],
   mode: 'story', // story | study | review
   queueCount: 0,
+  _scrollThrottleTimer: null,
 
   async init() {
     await AI.init();
@@ -54,14 +58,133 @@ let App = {
       }
     });
     
-    await this.loadBookshelf();
-    await this.updateQueueBadge();
     await this.loadSettings();
     
-    // Listen for AI demo fallback notification
+    // Restore last opened book (reading position)
+    const s = await getSettings();
+    if (s.lastOpenedBookId) {
+      const book = await getBook(s.lastOpenedBookId);
+      if (book && book.id) {
+        // Will open the book after bookshelf is loaded
+        this._pendingBookId = s.lastOpenedBookId;
+      }
+    }
+    
+    await this.loadBookshelf();
+    await this.updateQueueBadge();
+    
+    // Open last book after bookshelf is rendered
+    if (this._pendingBookId) {
+      await this.openBook(this._pendingBookId);
+      this._pendingBookId = null;
+    }
+    
+    // Listen for AI events
     window.addEventListener('ai:demo-fallback', (e) => {
-      this.showToast('⚠️ AI 연결 실패, 데모 모드로 대체됨: ' + e.detail.message, 'error');
+      this.showToast('⚠️ AI 연결 실패 (키 없음): ' + e.detail.message, 'error');
     });
+    window.addEventListener('ai:error', (e) => {
+      this.showToast('⚠️ AI 오류: ' + e.detail.message, 'error');
+    });
+    
+    // Close quick menu on outside click (L10: single global listener)
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.quick-menu') && !e.target.closest('.sent') && !e.target.closest('.qm-word')) {
+        this.closeQuickMenu();
+      }
+    });
+    
+    // Throttled scroll position save
+    document.addEventListener('scroll', () => {
+      if (this.currentView !== 'reader') return;
+      if (this._scrollThrottleTimer) clearTimeout(this._scrollThrottleTimer);
+      this._scrollThrottleTimer = setTimeout(() => {
+        this._saveScrollPosition();
+      }, 300);
+    }, { passive: true });
+    
+    // Sync init
+    const syncKey = localStorage.getItem('estory_sync_key');
+    if (syncKey) {
+      Sync.init(syncKey);
+      if (Sync.isEnabled()) {
+        // Pull remote data on first load
+        Sync.sync().then(result => {
+          if (result.success) {
+            console.log('Sync: initial pull complete');
+            this.showToast('☁️ 클라우드 동기화 완료!', 'info');
+            // Reload bookshelf with synced data
+            this.loadBookshelf();
+          }
+        });
+      }
+    }
+    
+    // Sync event handlers
+    $('sync-connect-btn')?.addEventListener('click', () => this.connectSync());
+    $('sync-push-btn')?.addEventListener('click', () => this.syncPush());
+    $('sync-pull-btn')?.addEventListener('click', () => this.syncPull());
+  },
+
+  // ── Sync methods ──
+  connectSync() {
+    const key = $('settings-sync-key')?.value.trim();
+    if (!key) {
+      this.showToast('Anon Key를 입력해주세요.', 'error');
+      return;
+    }
+    localStorage.setItem('estory_sync_key', key);
+    Sync.init(key);
+    if (Sync.isEnabled()) {
+      this.showToast('☁️ 동기화 연결 성공!', 'success');
+      $('sync-status').textContent = '동기화: 연결됨';
+      // Initial sync
+      Sync.sync().then(r => {
+        if (r.success) {
+          this.showToast(`☁️ 동기화 완료!`, 'success');
+          this.loadBookshelf();
+        }
+      });
+    } else {
+      this.showToast('❌ 동기화 연결 실패', 'error');
+    }
+  },
+
+  async syncPush() {
+    if (!Sync.isEnabled()) {
+      this.showToast('먼저 동기화를 연결해주세요.', 'error');
+      return;
+    }
+    this.showToast('⬆️ 업로드 중...', 'info');
+    const result = await Sync.pushAll();
+    if (result.success) {
+      $('sync-status').textContent = `동기화: 연결됨 (마지막: ${new Date().toLocaleTimeString()})`;
+      this.showToast('✅ 업로드 완료!', 'success');
+    } else {
+      this.showToast('❌ 업로드 실패', 'error');
+    }
+  },
+
+  async syncPull() {
+    if (!Sync.isEnabled()) {
+      this.showToast('먼저 동기화를 연결해주세요.', 'error');
+      return;
+    }
+    this.showToast('⬇️ 다운로드 중...', 'info');
+    const result = await Sync.pullAll();
+    if (result.success) {
+      $('sync-status').textContent = `동기화: 연결됨 (마지막: ${new Date().toLocaleTimeString()})`;
+      this.showToast(`✅ ${result.totalCount}개 레코드 동기화 완료!`, 'success');
+      this.loadBookshelf();
+    } else {
+      this.showToast('❌ 다운로드 실패', 'error');
+    }
+  },
+
+  _saveScrollPosition() {
+    if (!this.currentBook) return;
+    const offset = window.scrollY || window.pageYOffset;
+    updateBookProgress(this.currentBook.id, this.currentSelectedChunkIndex, offset);
   },
 
   async _loadScript(src) {
@@ -83,6 +206,11 @@ let App = {
     if (view === 'settings') this.loadSettings();
     
     this.updateTopbarTitle(view);
+    
+    // Persist current view for restore
+    getSettings().then(s => {
+      saveSettings({ ...s, lastView: view });
+    });
   },
 
   updateTopbarTitle(view) {
@@ -103,30 +231,58 @@ let App = {
     const grid = $('bookshelf-grid');
     grid.innerHTML = '';
     
-    // Add upload area
-    grid.innerHTML = '<div class="upload-area" id="upload-area"><div style="font-size:32px;margin-bottom:8px">📂</div><div style="font-size:14px;margin-bottom:4px">txt 파일을 업로드하세요</div><div style="font-size:12px">또는 여기로 드래그 & 드롭</div><input type="file" id="file-input" accept=".txt" style="display:none"></div>';
+    // Add upload area as first card
+    const uploadDiv = document.createElement('div');
+    uploadDiv.className = 'upload-area';
+    uploadDiv.id = 'upload-area';
+    uploadDiv.innerHTML = '<div style="font-size:32px;margin-bottom:8px">📂</div><div style="font-size:14px;margin-bottom:4px">txt 파일을 업로드하세요</div><div style="font-size:12px">또는 여기로 드래그 & 드롭</div><input type="file" id="file-input" accept=".txt" style="display:none">';
+    grid.appendChild(uploadDiv);
     
-    // Rebind upload events
-    setTimeout(() => {
-      document.getElementById('file-input')?.addEventListener('change', (e) => App.handleUpload(e));
-      document.getElementById('upload-area')?.addEventListener('click', () => document.getElementById('file-input')?.click());
-      document.getElementById('upload-area')?.addEventListener('dragover', (e) => e.preventDefault());
-      document.getElementById('upload-area')?.addEventListener('drop', (e) => { e.preventDefault(); if (e.dataTransfer.files.length) App.processFile(e.dataTransfer.files[0]); });
-    }, 50);
+    // Use event delegation instead of per-card listeners (M1)
+    grid.addEventListener('click', (e) => {
+      const card = e.target.closest('.book-card');
+      if (card) {
+        this.openBook(parseInt(card.dataset.id));
+        return;
+      }
+      // Upload area click
+      if (e.target.closest('#upload-area')) {
+        const input = document.getElementById('file-input');
+        if (input) input.click();
+      }
+    });
+    
+    // File input change
+    grid.addEventListener('change', (e) => {
+      if (e.target.id === 'file-input') {
+        this.handleUpload(e);
+      }
+    });
+    
+    // Drag & drop on upload area
+    grid.addEventListener('dragover', (e) => {
+      if (e.target.closest('#upload-area')) e.preventDefault();
+    });
+    grid.addEventListener('drop', (e) => {
+      const area = e.target.closest('#upload-area');
+      if (area) {
+        e.preventDefault();
+        if (e.dataTransfer.files.length) this.processFile(e.dataTransfer.files[0]);
+      }
+    });
     
     books.forEach(book => {
       const pct = book.totalChunks > 0 ? Math.round((book.currentChunk / book.totalChunks) * 100) : 0;
-      grid.innerHTML += `
-        <div class="book-card" data-id="${book.id}">
-          <div class="title">${escapeHtml(book.title)}</div>
-          <div class="author">${book.fileName}</div>
-          <div class="progress"><div class="progress-fill" style="width:${pct}%"></div></div>
-          <div class="meta"><span>${pct}% 완료</span><span>${book.totalChunks}챕터</span></div>
-        </div>`;
-    });
-    
-    grid.querySelectorAll('.book-card').forEach(card => {
-      card.addEventListener('click', () => this.openBook(parseInt(card.dataset.id)));
+      const card = document.createElement('div');
+      card.className = 'book-card';
+      card.dataset.id = book.id;
+      card.innerHTML = `
+        <div class="title">${escapeHtml(book.title)}</div>
+        <div class="author">${escapeHtml(book.fileName)}</div>
+        <div class="progress"><div class="progress-fill" style="width:${pct}%"></div></div>
+        <div class="meta"><span>${pct}% 완료</span><span>${book.totalChunks}챕터</span></div>
+      `;
+      grid.appendChild(card);
     });
     
     this.updateQueueBadge();
@@ -147,27 +303,42 @@ let App = {
     const id = await addBook(file, text);
     this.showToast(`"${file.name}" 추가 완료!`, 'success');
     await this.loadBookshelf();
+    Sync.scheduleSync();
   },
 
   /* ===== Reader ===== */
   async openBook(bookId) {
     this.currentBook = await getBook(bookId);
     if (!this.currentBook) return;
-    
+
+    // Save last opened book for position restore
+    getSettings().then(s => {
+      saveSettings({ ...s, lastOpenedBookId: bookId });
+    });
+
     this.bookData = { id: bookId, book: this.currentBook };
     const chunks = await getChunks(bookId);
+    this.currentChunks = chunks;
     const startChunk = Math.min(this.currentBook.currentChunk, chunks.length - 1);
+    this.currentSelectedChunkIndex = startChunk;
     this.currentChunk = chunks[startChunk] || chunks[0];
     this.currentSentences = await getSentences(this.currentChunk.id);
-    
+
+    // Set AI reading context for No-spoiler
+    AI.setReadingContext(this.currentBook.title, startChunk, chunks.length);
+
     // Prepend reader page
     $('reader-page').classList.add('active');
     this.switchView('reader');
-    
+
     this.renderReader();
-    
-    // Generate chapter summary if available (story memory)
-    // This will be lazy-loaded
+
+    // Restore scroll position
+    if (this.currentBook.currentOffset) {
+      setTimeout(() => {
+        window.scrollTo({ top: this.currentBook.currentOffset, behavior: 'instant' });
+      }, 50);
+    }
   },
 
   renderReader() {
@@ -187,6 +358,33 @@ let App = {
       <div class="book-title">${escapeHtml(this.currentBook.title)}</div>
     `;
     wrap.appendChild(header);
+    
+    // Chapter navigation
+    const navDiv = document.createElement('div');
+    navDiv.className = 'ch-nav';
+    navDiv.style.cssText = 'display:flex;gap:8px;margin-bottom:14px;align-items:center;';
+    const prevBtn = document.createElement('button');
+    prevBtn.textContent = '◀ 이전';
+    prevBtn.className = 'topbar-btn';
+    prevBtn.disabled = this.currentSelectedChunkIndex <= 0;
+    prevBtn.style.cssText = `padding:5px 12px;border:1px solid var(--bd);border-radius:6px;background:var(--bg3);color:var(--tx2);font-size:12px;cursor:pointer;${prevBtn.disabled ? 'opacity:0.4;cursor:default' : ''}`;
+    prevBtn.onclick = () => this.goToChunk(this.currentSelectedChunkIndex - 1);
+    
+    const chLabel = document.createElement('span');
+    chLabel.style.cssText = 'font-size:12px;color:var(--tx3);flex:1;text-align:center';
+    chLabel.textContent = `${this.currentSelectedChunkIndex + 1} / ${this.currentChunks.length}`;
+    
+    const nextBtn = document.createElement('button');
+    nextBtn.textContent = '다음 ▶';
+    nextBtn.className = 'topbar-btn';
+    nextBtn.disabled = this.currentSelectedChunkIndex >= this.currentChunks.length - 1;
+    nextBtn.style.cssText = `padding:5px 12px;border:1px solid var(--bd);border-radius:6px;background:var(--bg3);color:var(--tx2);font-size:12px;cursor:pointer;${nextBtn.disabled ? 'opacity:0.4;cursor:default' : ''}`;
+    nextBtn.onclick = () => this.goToChunk(this.currentSelectedChunkIndex + 1);
+    
+    navDiv.appendChild(prevBtn);
+    navDiv.appendChild(chLabel);
+    navDiv.appendChild(nextBtn);
+    wrap.appendChild(navDiv);
     
     // Mode selector
     const modes = document.createElement('div');
@@ -217,11 +415,12 @@ let App = {
     wrap.appendChild(modes);
     wrap.appendChild(ttsBar);
     
-    // Text
+    // Text with event delegation
     const textDiv = document.createElement('div');
     textDiv.className = 'reader-text';
+    textDiv.id = 'reader-text';
     
-    // Group sentences into paragraphs (sequential similar-index sentences)
+    // Group sentences into paragraphs
     let para = document.createElement('p');
     this.currentSentences.forEach((sent, i) => {
       const span = document.createElement('span');
@@ -229,32 +428,64 @@ let App = {
       span.dataset.index = i;
       span.dataset.text = sent.text;
       span.textContent = sent.text + ' ';
-      span.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.onSentenceClick(i, sent.text);
-      });
       para.appendChild(span);
     });
     textDiv.appendChild(para);
     wrap.appendChild(textDiv);
     
-    // TTS controls
+    // Event delegation for sentence clicks (H2: single listener)
+    textDiv.addEventListener('click', (e) => {
+      const sentEl = e.target.closest('.sent');
+      if (!sentEl) return;
+      const index = parseInt(sentEl.dataset.index);
+      const text = sentEl.dataset.text;
+      this.onSentenceClick(index, text);
+    });
+    
+    // TTS controls - rate slider saves via TTS.setRate (M10 fix)
     const rateSlider = $('tts-rate');
     if (rateSlider) {
       rateSlider.addEventListener('input', () => {
         TTS._rate = parseFloat(rateSlider.value);
         $('tts-rate-val').textContent = TTS._rate + 'x';
       });
+      // Save rate on change (drag end or click)
+      rateSlider.addEventListener('change', () => {
+        TTS.setRate(parseFloat(rateSlider.value));
+      });
     }
     $('tts-play')?.addEventListener('click', () => this.startTTS());
     $('tts-pause')?.addEventListener('click', () => TTS.isSpeaking() ? TTS.pause() : TTS.resume());
     $('tts-stop')?.addEventListener('click', () => TTS.stop());
     
-    document.addEventListener('click', (e) => {
-      if (!e.target.closest('.quick-menu') && !e.target.closest('.sent')) {
-        this.closeQuickMenu();
-      }
+    // Close quick menu on outside click (single listener)
+    // Using capture phase to prevent interference
+  },
+
+  goToChunk(index) {
+    if (index < 0 || index >= this.currentChunks.length) return;
+    if (index === this.currentSelectedChunkIndex) return;
+    
+    // Save progress before moving
+    const scrollOffset = window.scrollY || window.pageYOffset;
+    updateBookProgress(this.currentBook.id, this.currentSelectedChunkIndex, scrollOffset);
+    
+    // Switch chunk
+    this.currentSelectedChunkIndex = index;
+    this.currentChunk = this.currentChunks[index];
+    
+    // Update AI reading context
+    AI.setReadingContext(this.currentBook.title, index, this.currentChunks.length);
+    
+    // Load sentences for new chunk
+    getSentences(this.currentChunk.id).then(sents => {
+      this.currentSentences = sents;
+      this.renderReader();
+      window.scrollTo({ top: 0, behavior: 'instant' });
     });
+    
+    // Save current chunk in DB
+    updateBookProgress(this.currentBook.id, index, 0);
   },
 
   setReaderMode(mode) {
@@ -265,6 +496,7 @@ let App = {
   /* ===== Sentence Click → Quick Menu ===== */
   async onSentenceClick(index, text) {
     this.selectedSentence = { index, text };
+    this.selectedWord = null;
     
     // Highlight the sentence
     document.querySelectorAll('.sent').forEach(s => s.classList.remove('active'));
@@ -274,8 +506,16 @@ let App = {
     const rect = sentEls[index]?.getBoundingClientRect();
     const menu = $('quick-menu');
     
+    // Generate word tokens for each word in the sentence
+    const words = text.split(' ').filter(w => w.length > 0);
+    const wordHtml = words.map(w => {
+      const clean = escapeHtml(w);
+      return `<span class="qm-word" data-word="${clean}" style="cursor:pointer;padding:2px 4px;border-radius:4px;background:var(--bg3);color:var(--tx);font-size:13px;display:inline-block;margin:2px;transition:var(--t)">${clean}</span>`;
+    }).join('');
+    
     menu.innerHTML = `
       <div class="qm-sentence">${escapeHtml(text)}</div>
+      <div class="qm-words" style="margin-bottom:8px;padding:6px;background:var(--bg);border-radius:6px;line-height:1.8">${wordHtml}</div>
       <div class="qm-actions">
         <button class="qm-btn word" onclick="App.wordHint()">📖 단어 힌트</button>
         <button class="qm-btn grammar" onclick="App.grammarHint()">🔍 구문 힌트</button>
@@ -285,6 +525,22 @@ let App = {
       </div>
       <div id="hint-result" style="margin-top:8px;padding:8px;border-radius:6px;background:var(--bg);font-size:12px;color:var(--tx2);line-height:1.5;display:none"></div>
     `;
+    
+    // Click on a word token to select it
+    menu.querySelectorAll('.qm-word').forEach(el => {
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        // Deselect all, select this one
+        menu.querySelectorAll('.qm-word').forEach(w => w.style.background = 'var(--bg3)');
+        el.style.background = 'var(--a0)';
+        el.style.color = '#000';
+        this.selectedWord = el.dataset.word;
+        // Auto-show word hint for this word
+        this.wordHint(el.dataset.word);
+      });
+      el.addEventListener('mouseenter', () => { if (el.style.background !== 'var(--a0)') el.style.background = 'var(--bg4)'; });
+      el.addEventListener('mouseleave', () => { if (el.style.background !== 'var(--a0)') el.style.background = 'var(--bg3)'; });
+    });
     
     menu.classList.add('open');
     if (rect) {
@@ -297,16 +553,20 @@ let App = {
 
   closeQuickMenu() {
     $('quick-menu')?.classList.remove('open');
+    this.selectedWord = null;
   },
 
-  async wordHint() {
+  async wordHint(targetWord) {
+    const word = targetWord || this.selectedWord;
+    if (!word) {
+      this.showToast('문장에서 단어를 클릭해주세요!', 'info');
+      return;
+    }
     const result = $('hint-result');
     result.style.display = 'block';
     result.textContent = '단어 뜻 불러오는 중...';
-    const words = this.selectedSentence.text.split(' ').filter(w => w.length > 3);
-    const randomWord = words[Math.floor(Math.random() * words.length)] || 'example';
-    const hint = await AI.wordHint(randomWord, this.selectedSentence.text);
-    result.innerHTML = `<b>${randomWord}</b>: ${hint.meaningKo || '데이터를 불러오는 중입니다'} <span style="color:var(--tx3)">(${hint.partOfSpeech || ''})</span>`;
+    const hint = await AI.wordHint(word, this.selectedSentence.text);
+    result.innerHTML = `<b>${escapeHtml(word)}</b>: ${escapeHtml(hint.meaningKo || '데이터를 불러오는 중입니다')} <span style="color:var(--tx3)">(${escapeHtml(hint.partOfSpeech || '')})</span>`;
   },
 
   async grammarHint() {
@@ -314,7 +574,11 @@ let App = {
     result.style.display = 'block';
     result.textContent = '분석 중...';
     const data = await AI.grammarHint(this.selectedSentence.text);
-    result.innerHTML = `<b>문장 구조:</b> ${data.structure}<br><b>시제:</b> ${data.tense}`;
+    if (data.error) {
+      result.textContent = '⚠️ ' + (data.message || '분석 실패');
+      return;
+    }
+    result.innerHTML = `<b>문장 구조:</b> ${escapeHtml(data.structure)}<br><b>시제:</b> ${escapeHtml(data.tense)}`;
   },
 
   async sentenceGist() {
@@ -322,6 +586,10 @@ let App = {
     result.style.display = 'block';
     result.textContent = '요약 중...';
     const data = await AI.sentenceGist(this.selectedSentence.text);
+    if (data.error) {
+      result.textContent = '⚠️ ' + (data.message || '요약 실패');
+      return;
+    }
     result.textContent = `📋 ${data.gistKo}`;
   },
 
@@ -361,8 +629,8 @@ let App = {
     const fb = $('study-feedback');
     fb.classList.add('open');
     
-    if (data.status === 'finished' || data.shouldShowModelTranslation) {
-      // Show comparison
+    if (data.status === 'finished') {
+      // Only show comparison when truly finished (H3 fix)
       const cv = $('study-compare');
       cv.classList.add('open');
       cv.innerHTML = `
@@ -373,16 +641,16 @@ let App = {
           </div>
           <div class="cv-box">
             <div class="cv-label">구조 해석 (직역)</div>
-            <div class="cv-text">${data.literalTranslationKo || '—'}</div>
+            <div class="cv-text">${escapeHtml(data.literalTranslationKo || '—')}</div>
           </div>
         </div>
         <div class="cv-row">
           <div class="cv-box" style="grid-column:1/-1">
             <div class="cv-label">자연 해석 (의역)</div>
-            <div class="cv-text">${data.naturalTranslationKo || '—'}</div>
+            <div class="cv-text">${escapeHtml(data.naturalTranslationKo || '—')}</div>
           </div>
         </div>
-        ${data.storyNoteKo ? `<div class="cv-note">💡 ${data.storyNoteKo}</div>` : ''}
+        ${data.storyNoteKo ? `<div class="cv-note">💡 ${escapeHtml(data.storyNoteKo)}</div>` : ''}
       `;
       
       $('study-submit').textContent = '✅ 완료';
@@ -403,6 +671,14 @@ let App = {
         this.selectedSentence?.text, this.feedbackAttempts,
         text, data.literalTranslationKo, data.naturalTranslationKo, data.storyNoteKo
       );
+      Sync.scheduleSync();
+      
+      // Mark queue as done (M4 fix: only on finished)
+      if (this._currentQueueId) {
+        await markQueueDone(this._currentQueueId);
+        this._currentQueueId = null;
+        await this.updateQueueBadge();
+      }
       
       // Story Buddy buttons
       const buddyDiv = $('study-buddy');
@@ -419,13 +695,42 @@ let App = {
       // Save to vocabulary
       this._offerVocabSave();
       
-    } else {
-      // One-point feedback
+    } else if (data.status === 'good_enough') {
+      // H3: Show "한 번 더 다듬을까요?" dialog instead of revealing translations
+      const fb = $('study-feedback');
+      fb.classList.add('open');
       fb.innerHTML = `
         <div class="fb-label">💡 개선 포인트 (${this.feedbackAttempts.length + 1})</div>
-        <div class="fb-text">${data.feedbackKo}</div>
-        ${data.hintKo ? `<div class="fb-hint">💭 ${data.hintKo}</div>` : ''}
-        ${data.l1InterferenceKo ? `<div class="fb-l1">🇰🇷 ${data.l1InterferenceKo}</div>` : ''}
+        <div class="fb-text">${escapeHtml(data.feedbackKo || '좋은 해석이에요!')}</div>
+        ${data.hintKo ? `<div class="fb-hint">💭 ${escapeHtml(data.hintKo)}</div>` : ''}
+        ${data.l1InterferenceKo ? `<div class="fb-l1">🇰🇷 ${escapeHtml(data.l1InterferenceKo)}</div>` : ''}
+        <div class="good-enough-actions" style="margin-top:12px;display:flex;gap:8px">
+          <button class="btn" onclick="App._finishStudy()">✅ 이 정도면 충분해요!</button>
+          <button class="btn-s" onclick="App._continueStudy()">🔄 한 번 더 다듬기</button>
+        </div>
+      `;
+      
+      this.feedbackAttempts.push({
+        userTranslation: text,
+        aiStatus: data.status,
+        issueType: data.issueType,
+        feedbackKo: data.feedbackKo,
+        hintKo: data.hintKo,
+        l1InterferenceKo: data.l1InterferenceKo
+      });
+      
+      input.value = '';
+      input.placeholder = '피드백을 반영해서 다시 해석해보세요...';
+      $('study-submit').disabled = false;
+      $('study-submit').textContent = '🔄 다시 제출';
+      
+    } else {
+      // One-point feedback (H1: escapeHtml applied)
+      fb.innerHTML = `
+        <div class="fb-label">💡 개선 포인트 (${this.feedbackAttempts.length + 1})</div>
+        <div class="fb-text">${escapeHtml(data.feedbackKo)}</div>
+        ${data.hintKo ? `<div class="fb-hint">💭 ${escapeHtml(data.hintKo)}</div>` : ''}
+        ${data.l1InterferenceKo ? `<div class="fb-l1">🇰🇷 ${escapeHtml(data.l1InterferenceKo)}</div>` : ''}
       `;
       
       this.feedbackAttempts.push({
@@ -442,6 +747,91 @@ let App = {
       $('study-submit').disabled = false;
       $('study-submit').textContent = '🔄 다시 제출';
     }
+  },
+
+  // H3: User chooses to finish study
+  _finishStudy() {
+    // Call AI.feedback again but this time the previousIssues will trigger 'finished' status
+    // Or simply proceed to show the comparison using the last good enough data
+    const last = this.feedbackAttempts[this.feedbackAttempts.length - 1];
+    if (!last) return;
+    
+    // Manually mark as finished and show comparison
+    const fb = $('study-feedback');
+    const cv = $('study-compare');
+    cv.classList.add('open');
+    
+    // We need to get the model translation from the last attempt
+    // Since good_enough doesn't include translations, let AI finish properly
+    this._finishWithAI(this.selectedSentence.text, last.userTranslation);
+  },
+
+  async _finishWithAI(sentence, userTranslation) {
+    const fb = $('study-feedback');
+    fb.innerHTML = '<div class="fb-label">📝 최종 해석 생성 중...</div>';
+    
+    // Call AI with explicit request for finished status
+    const data = await AI.feedback(sentence, userTranslation, this.feedbackAttempts);
+    
+    const cv = $('study-compare');
+    cv.classList.add('open');
+    cv.innerHTML = `
+      <div class="cv-row">
+        <div class="cv-box">
+          <div class="cv-label">내 해석</div>
+          <div class="cv-text">${escapeHtml(userTranslation)}</div>
+        </div>
+        <div class="cv-box">
+          <div class="cv-label">구조 해석 (직역)</div>
+          <div class="cv-text">${escapeHtml(data.literalTranslationKo || data.naturalTranslationKo || '—')}</div>
+        </div>
+      </div>
+      <div class="cv-row">
+        <div class="cv-box" style="grid-column:1/-1">
+          <div class="cv-label">자연 해석 (의역)</div>
+          <div class="cv-text">${escapeHtml(data.naturalTranslationKo || data.literalTranslationKo || '—')}</div>
+        </div>
+      </div>
+      ${data.storyNoteKo ? `<div class="cv-note">💡 ${escapeHtml(data.storyNoteKo)}</div>` : ''}
+    `;
+    
+    $('study-submit').textContent = '✅ 완료';
+    $('study-submit').disabled = true;
+    
+    await saveFeedbackSession(
+      this.currentBook?.id, this.selectedSentence?.index,
+      this.selectedSentence?.text, this.feedbackAttempts,
+      userTranslation, data.literalTranslationKo, data.naturalTranslationKo, data.storyNoteKo
+    );
+    Sync.scheduleSync();
+    
+    // Mark queue as done
+    if (this._currentQueueId) {
+      await markQueueDone(this._currentQueueId);
+      this._currentQueueId = null;
+      await this.updateQueueBadge();
+    }
+    
+    // Story Buddy
+    const buddyDiv = $('study-buddy');
+    buddyDiv.innerHTML = `
+      <div class="buddy-actions">
+        <button class="buddy-btn" onclick="App.askBuddy('situation')">📌 지금 상황은?</button>
+        <button class="buddy-btn" onclick="App.askBuddy('speaker')">🗣️ 누가 말하는 중?</button>
+        <button class="buddy-btn" onclick="App.askBuddy('mood')">🎭 분위기가 어때?</button>
+        <button class="buddy-btn" onclick="App.askBuddy('cultural')">🌍 문화 배경</button>
+      </div>
+      <div id="buddy-response" class="buddy-response"></div>
+    `;
+    
+    this._offerVocabSave();
+  },
+
+  // H3: User chooses to continue
+  _continueStudy() {
+    $('study-submit').disabled = false;
+    $('study-submit').textContent = '🔄 다시 제출';
+    $('study-user-input').focus();
   },
 
   async askBuddy(type) {
@@ -503,9 +893,12 @@ let App = {
     overlay.querySelectorAll('.vocab-select-word').forEach(btn => {
       btn.addEventListener('click', async () => {
         const word = btn.dataset.word;
-        await addWord(word, '(뜻을 입력하세요)', this.selectedSentence.text, this.currentBook?.id, this.selectedSentence?.index, '');
+        // M6: Fetch actual meaning from AI
+        const meaning = await fetchWordMeaning(word, this.selectedSentence.text);
+        await addWord(word, meaning, this.selectedSentence.text, this.currentBook?.id, this.selectedSentence?.index, '');
         this.showToast(`"${word}" 단어장에 추가됨!`, 'success');
         this.updateQueueBadge();
+        Sync.scheduleSync();
         overlay.remove();
       });
       btn.addEventListener('mouseenter', () => { btn.style.background = 'var(--bg4)'; btn.style.borderColor = 'var(--a0)'; });
@@ -521,6 +914,7 @@ let App = {
     await addToQueue(this.currentBook?.id, this.selectedSentence?.index, this.selectedSentence.text);
     this.showToast('📌 나중에 공부할 문장으로 저장됨!', 'info');
     await this.updateQueueBadge();
+    Sync.scheduleSync();
   },
 
   async renderQueue() {
@@ -558,21 +952,27 @@ let App = {
   },
 
   async studyFromQueue(id, sentenceId, text) {
-    await markQueueDone(id);
+    // M4: Don't mark done immediately — track for when user actually finishes
+    this._currentQueueId = id;
     this.selectedSentence = { index: sentenceId || 0, text };
     this.openStudy();
-    await this.renderQueue();
-    await this.updateQueueBadge();
+    // Don't render queue or update badge here — will update when finished
   },
 
   async clearQueue() {
     const items = await getQueue();
+    if (!items.length) {
+      this.showToast('큐가 이미 비어 있습니다.', 'info');
+      return;
+    }
+    if (!confirm(`정말 "${items.length}개" 문장을 모두 완료 처리하시겠습니까?`)) return;
     for (const item of items) {
       await markQueueDone(item.id);
     }
     await this.renderQueue();
     await this.updateQueueBadge();
     this.showToast('큐가 비워졌습니다.', 'info');
+    Sync.scheduleSync();
   },
 
   async updateQueueBadge() {
@@ -649,6 +1049,12 @@ let App = {
     $('settings-tts-val').textContent = s.ttsRate + 'x';
     $('settings-fontsize').value = s.fontSize || 16;
     $('settings-fs-val').textContent = s.fontSize + 'px';
+    
+    // Sync status
+    if (Sync.isEnabled()) {
+      $('sync-status').textContent = '동기화: 연결됨';
+      $('settings-sync-key').value = '••••••••';
+    }
   },
 
   async saveSettings() {
@@ -728,12 +1134,35 @@ let App = {
     if (!file) return;
     try {
       const text = await file.text();
+      
+      // C3: Confirm before destructive import
+      if (!confirm('⚠️ 기존 데이터가 모두 대체됩니다.\n현재 데이터를 자동 백업하고 진행하시겠습니까?')) {
+        this.showToast('가져오기가 취소되었습니다.', 'info');
+        e.target.value = '';
+        return;
+      }
+      
+      // Auto-backup before import
+      try {
+        const backup = await exportData();
+        const blob = new Blob([backup], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `E-Story-before-import-${new Date().toISOString().slice(0, 10)}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch(backupErr) {
+        console.warn('Auto-backup failed (non-fatal):', backupErr);
+      }
+      
       await importData(text);
       this.showToast('✅ 데이터 복원 완료! 페이지를 새로고침합니다.', 'success');
       setTimeout(() => location.reload(), 1000);
     } catch(err) {
       this.showToast('❌ 복원 실패: ' + err.message, 'error');
     }
+    e.target.value = '';
   },
 
   /* ===== Toast ===== */

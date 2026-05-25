@@ -1,6 +1,15 @@
 /* E-Story Database Module — IndexedDB via Dexie.js */
+/* v2: Schema versioning, cascade delete, settings sync support */
 
 const DB = new Dexie('EStoryDB');
+
+// H6: Proper schema versioning with upgrade paths
+DB.version(1).stores({
+  books: '++id, title',
+  chunks: '++id, bookId, index',
+  sentences: '++id, bookId, chunkId, index',
+  vocabulary: '++id, word, bookId'
+});
 
 DB.version(2).stores({
   books: '++id, title, fileName, createdAt',
@@ -29,6 +38,10 @@ async function addBook(file, content) {
   // Split into chunks (chapters/sections)
   const chunks = splitIntoChunks(content);
   const chunkIds = [];
+  
+  // H2/M9: Use bulkAdd for sentences instead of serial adds
+  const allSentences = [];
+  
   for (let i = 0; i < chunks.length; i++) {
     const cid = await DB.chunks.add({
       bookId: id, index: i, title: chunks[i].title || `Chapter ${i+1}`,
@@ -39,12 +52,21 @@ async function addBook(file, content) {
     // Split chunk into sentences
     const sents = splitSentences(chunks[i].text);
     for (let j = 0; j < sents.length; j++) {
-      await DB.sentences.add({
+      allSentences.push({
         bookId: id, chunkId: cid, index: j,
         text: sents[j], startOffset: 0, endOffset: 0
       });
     }
   }
+  
+  // Bulk add all sentences at once (M9 fix)
+  if (allSentences.length) {
+    // Split into chunks of 500 to avoid write limits
+    for (let i = 0; i < allSentences.length; i += 500) {
+      await DB.sentences.bulkAdd(allSentences.slice(i, i + 500));
+    }
+  }
+  
   await DB.books.update(id, { totalChunks: chunks.length, updatedAt: Date.now() });
   return id;
 }
@@ -61,6 +83,32 @@ async function updateBookProgress(id, chunk, offset) {
   await DB.books.update(id, { currentChunk: chunk, currentOffset: offset, updatedAt: Date.now() });
 }
 
+// H4: Delete book with full cascade
+async function deleteBook(id) {
+  await DB.transaction('rw', 
+    [DB.books, DB.chunks, DB.sentences, DB.feedbackSessions, DB.translationAttempts, 
+     DB.vocabulary, DB.studyQueue, DB.highlights, DB.storyMemories, DB.readingSessions],
+    async () => {
+      // Delete all related data
+      await DB.chunks.where('bookId').equals(id).delete();
+      await DB.sentences.where('bookId').equals(id).delete();
+      await DB.feedbackSessions.where('bookId').equals(id).delete();
+      // Cascade delete translationAttempts via sessionIds
+      const sessions = await DB.feedbackSessions.where('bookId').equals(id).toArray();
+      for (const s of sessions) {
+        await DB.translationAttempts.where('sessionId').equals(s.id).delete();
+      }
+      await DB.vocabulary.where('bookId').equals(id).delete();
+      await DB.studyQueue.where('bookId').equals(id).delete();
+      await DB.highlights.where('bookId').equals(id).delete();
+      await DB.storyMemories.where('bookId').equals(id).delete();
+      await DB.readingSessions.where('bookId').equals(id).delete();
+      // Finally delete the book
+      await DB.books.delete(id);
+    }
+  );
+}
+
 async function getChunks(bookId) {
   return await DB.chunks.where('bookId').equals(bookId).sortBy('index');
 }
@@ -69,29 +117,27 @@ async function getSentences(chunkId) {
   return await DB.sentences.where('chunkId').equals(chunkId).sortBy('index');
 }
 
+// L5: Better chunk split — use character count not fixed 10 parts
 function splitIntoChunks(text) {
   // Try chapter/section headings
-  // Prologue/Epilogue도 포함, OCR 노이즈(파이프| 등) 허용, 목차 줄(숫자 여러개) 제외
   const chapterRegex = /(?:^|\n)(?:(?:CHAPTER|Chapter|chapter)\s+[\w\s,.!?'"|—–-]+|Prologue|ProLoGuE|Epilogue)(?:\n|$)/g;
   let matches = [...text.matchAll(chapterRegex)];
   
-  // 필터: 목차 줄(챕터 숫자가 여러 개 포함된 줄) 제외
+  // Filter out table of contents lines (multiple numbers)
   matches = matches.filter(m => {
-    const text = m[0];
-    const chapterNums = text.match(/\d+/g);
-    // 챕터 숫자가 2개 이상이면 목차 줄
-    return !(chapterNums && chapterNums.length >= 2);
+    const t = m[0];
+    const nums = t.match(/\d+/g);
+    return !(nums && nums.length >= 2);
   });
   
   if (matches.length < 2) {
-    // Fallback: split by double newlines into reasonable chunks
-    const paragraphs = text.split(/\n{2,}/).filter(p => p.trim().length > 50);
-    const chunkSize = Math.max(1, Math.floor(paragraphs.length / 10));
+    // Fallback: split by ~5000 chars instead of 10 equal parts (L5 fix)
+    const chunkSize = 5000;
     const chunks = [];
-    for (let i = 0; i < paragraphs.length; i += chunkSize) {
+    for (let i = 0; i < text.length; i += chunkSize) {
       chunks.push({
         title: `Page ${Math.floor(i/chunkSize) + 1}`,
-        text: paragraphs.slice(i, i + chunkSize).join('\n\n'),
+        text: text.slice(i, i + chunkSize),
         start: i, end: i + chunkSize
       });
     }
@@ -111,12 +157,22 @@ function splitIntoChunks(text) {
   return chunks.length ? chunks : [{ title: 'Content', text, start: 0, end: 1 }];
 }
 
+// M2: More robust sentence splitter
 function splitSentences(text) {
-  // Remove excessive whitespace
   text = text.replace(/\s+/g, ' ').trim();
+  
+  // Handle common abbreviations that shouldn't split
+  const abbreviations = /\b(Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc|e\.g|i\.g|i\.e|Esq|Hon|Rev|Capt|Col|Gen|Lt|Sgt|Vol|Figs?|Figs?|Eds?|paras?|Dept|Ave|Blvd|Rd|Pkwy|St|Sq|Ct|Ln|Dr|Way|Pl|Cir|Ave|Blvd|Rd|Pkwy|St|Sq|Ct|Ln|Dr|Way|Pl|Cir)\.\s/g;
+  const abbrHits = [...text.matchAll(new RegExp(abbreviations, 'gi'))];
+  const protectedText = text.replace(abbreviations, (m) => m.replace('.', '<<<DOT>>>'));
+  
   // Split by sentence-ending punctuation
-  const raw = text.match(/[^.!?]+[.!?]+(?:\s|$)/g) || [text];
-  return raw.map(s => s.trim()).filter(s => s.length > 3);
+  const raw = protectedText.match(/[^.!?]+[.!?]+(?:\s|$)/g) || [protectedText];
+  
+  return raw.map(s => {
+    // Restore dots in abbreviations
+    return s.replace(/<<<DOT>>>/g, '.').trim();
+  }).filter(s => s.length > 3);
 }
 
 /* ===== Vocabulary ===== */
@@ -196,7 +252,7 @@ async function getFeedbackHistory(bookId) {
   return sessions.slice(0, 50);
 }
 
-/* ===== Settings ===== */
+/* ===== Settings (with extended defaults for C5 restore) ===== */
 async function getSettings() {
   let s = await DB.settings.get(1);
   if (!s) {
@@ -205,7 +261,8 @@ async function getSettings() {
       ttsRate: 0.9, ttsVoice: '',
       aiProvider: '', aiBaseUrl: 'https://api.openai.com/v1',
       aiModel: 'gpt-4o-mini', aiKey: '', aiKeyMode: 'session',
-      apiKeyStorageMode: 'session'
+      apiKeyStorageMode: 'session',
+      lastOpenedBookId: null, lastView: 'bookshelf'
     };
     await DB.settings.put(s);
   }
@@ -264,7 +321,18 @@ function simpleHash(s) {
 }
 
 function detectEncoding(text) {
-  // Check for null bytes (UTF-16) or high ASCII patterns
   if (text.includes('\u0000')) return 'utf-16';
   return 'utf-8';
+}
+
+// M6: Update word meaning via AI
+async function fetchWordMeaning(word, sentence) {
+  try {
+    // Try AI first
+    const hint = await AI.wordHint(word, sentence);
+    if (hint && hint.meaningKo && !hint.error) {
+      return hint.meaningKo;
+    }
+  } catch(e) {}
+  return '(뜻을 불러오는 중...)';
 }

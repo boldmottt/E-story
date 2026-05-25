@@ -148,6 +148,20 @@
       <button class="btn-s" id="settings-test-ai" style="margin-top:8px">🔌 AI 연결 테스트</button>
       <button class="btn" id="settings-save" style="margin-top:8px">💾 설정 저장</button>
     </div>
+
+    <div class="settings-group">
+      <h3>☁️ 클라우드 동기화 (Supabase)</h3>
+      <div class="settings-row">
+        <label>Anon Key</label>
+        <input type="password" id="settings-sync-key" placeholder="eyJ... (Supabase anon key)" style="width:240px">
+      </div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn" id="sync-connect-btn">🔗 연결</button>
+        <button class="btn-s" id="sync-push-btn">⬆️ 업로드</button>
+        <button class="btn-s" id="sync-pull-btn">⬇️ 다운로드</button>
+      </div>
+      <div id="sync-status" style="font-size:12px;color:var(--tx3);margin-top:8px">동기화: 연결 안 됨</div>
+    </div>
   </div>
 </div>
 </div>
@@ -178,10 +192,11 @@
 <div class="toast-container" id="toast-container"></div>
 
 <!-- ===== Scripts ===== -->
-<script src="https://unpkg.com/dexie@3.2.6/dist/dexie.js"></script>
+<script src="https://unpkg.com/dexie@3.2.6/dist/dexie.js" integrity="sha384-1g2YcQrnlYyCMmMxfSGYR88NfTDKVZQFRR+5IH7q79H6+6V0qlrFEJAo1NX5HQ2" crossorigin="anonymous"></script>
 <script src="js/db.js"></script>
 <script src="js/ai.js"></script>
 <script src="js/tts.js"></script>
+<script src="js/sync.js"></script>
 <script src="js/app.js"></script>
 
 </body>

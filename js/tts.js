@@ -28,6 +28,14 @@ const TTS = {
   },
 
   getEnglishVoice() {
+    // If no voices yet, try to reload them once
+    if (!this._voices.length) {
+      this._loadVoices();
+      // If still empty after reload, schedule a retry
+      if (!this._voices.length) {
+        setTimeout(() => this._loadVoices(), 500);
+      }
+    }
     // Prefer Samantha on macOS, then any English voice
     const preferred = ['Samantha', 'Karen', 'Moira', 'Fiona', 'Google US English', 'Microsoft David', 'Microsoft Zira'];
     for (const name of preferred) {
@@ -39,8 +47,12 @@ const TTS = {
 
   async setRate(rate) {
     this._rate = rate;
-    const settings = await getSettings();
-    saveSettings({ ...settings, ttsRate: rate });
+    // M10: Debounced save via settings update
+    clearTimeout(this._rateTimer);
+    this._rateTimer = setTimeout(async () => {
+      const settings = await getSettings();
+      saveSettings({ ...settings, ttsRate: rate });
+    }, 500); // debounce 500ms
   },
 
   speakWord(word, callback) {

@@ -52,7 +52,7 @@
         <div class="upload-icon">📂</div>
         <div class="upload-label">txt 파일을 업로드하세요</div>
         <div class="upload-hint">또는 여기로 드래그 & 드롭</div>
-        <input type="file" id="file-input" accept=".txt">
+        <input type="file" id="file-input" accept=".txt" class="hidden-input">
       </div>
     </div>
   </div>
@@ -80,7 +80,7 @@
   <!-- ===== Queue Page ===== -->
   <div class="content" id="queue-page">
     <div class="page-header-row">
-      <h2 class="page-heading" style="margin-bottom:0">⏰ 나중에 공부</h2>
+      <h2 class="page-heading mb-0">⏰ 나중에 공부</h2>
       <button class="btn-s" id="queue-clear">모두 완료</button>
     </div>
     <div class="queue-list" id="queue-list"></div>
@@ -108,7 +108,7 @@
       </div>
       <div class="settings-row">
         <label>API Key</label>
-        <input type="password" id="settings-key" placeholder="sk-..." style="width:240px" autocomplete="off">
+        <input type="password" id="settings-key" placeholder="sk-..." class="w-240" autocomplete="off">
       </div>
       <div class="settings-row">
         <label>키 저장 방식</label>
@@ -140,13 +140,13 @@
 
     <div class="settings-group">
       <h3>💾 백업</h3>
-      <div style="display:flex;gap:8px">
+      <div class="flex-row">
         <button class="btn" id="export-btn">📤 내보내기</button>
         <button class="btn-s" id="import-btn">📥 가져오기</button>
-        <input type="file" id="import-file" accept=".json" style="display:none">
+        <input type="file" id="import-file" accept=".json" class="hidden-input">
       </div>
-      <button class="btn-s" id="settings-test-ai" style="margin-top:8px">🔌 AI 연결 테스트</button>
-      <button class="btn" id="settings-save" style="margin-top:8px">💾 설정 저장</button>
+      <button class="btn-s" id="settings-test-ai" class="mt-8">🔌 AI 연결 테스트</button>
+      <button class="btn" id="settings-save" class="mt-8">💾 설정 저장</button>
     </div>
   </div>
 </div>

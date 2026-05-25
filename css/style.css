@@ -261,3 +261,7 @@ a{color:var(--a0);text-decoration:none}
   .compare-view .cv-row{grid-template-columns:1fr}
 }
 .hidden-input{display:none}
+.flex-row{display:flex;gap:8px}
+.mt-8{margin-top:8px}
+.mb-0{margin-bottom:0}
+.w-240{width:240px}

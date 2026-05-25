@@ -76,10 +76,6 @@ let App = {
       if (e.target.dataset.action === 'renderVocab') this.renderVocabulary();
     });
     
-    // URL import
-    $('url-load-btn')?.addEventListener('click', () => this.loadBookFromUrl());
-    $('url-input')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') this.loadBookFromUrl(); });
-    
     // Close study panel
     $('study-close')?.addEventListener('click', () => this.closeStudy());
     
@@ -204,6 +200,11 @@ let App = {
     });
     
     grid.innerHTML = html;
+    
+    // URL import — bind after element exists
+    $('url-load-btn')?.addEventListener('click', () => this.loadBookFromUrl());
+    $('url-input')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') this.loadBookFromUrl(); });
+    
     this.updateQueueBadge();
   },
 

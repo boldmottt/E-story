@@ -55,7 +55,7 @@ async function addBook(file, content) {
     for (let j = 0; j < sents.length; j++) {
       allSentences.push({
         bookId: id, chunkId: cid, index: j,
-        text: sents[j], startOffset: 0, endOffset: 0
+        text: sents[j].text, para: sents[j].para, startOffset: 0, endOffset: 0
       });
     }
   }
@@ -158,21 +158,33 @@ function splitIntoChunks(text) {
   return chunks.length ? chunks : [{ title: 'Content', text, start: 0, end: 1 }];
 }
 
-// M2: More robust sentence splitter
+// M2: Robust sentence splitter that PRESERVES paragraph structure.
+// Returns [{ text, para }] — `para` is the 0-based paragraph index so the
+// reader can render real <p> breaks instead of one wall of text.
 function splitSentences(text) {
-  text = text.replace(/\s+/g, ' ').trim();
-  
-  // Handle common abbreviations that shouldn't split (deduped)
   const abbreviations = /\b(Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc|e\.g|i\.e|Capt|Col|Gen|Lt|Sgt|Vol|Dept|Ave|Blvd|Rd)\.\s/g;
-  const protectedText = text.replace(abbreviations, (m) => m.replace('.', '<<<DOT>>>'));
-  
-  // Split by sentence-ending punctuation
-  const raw = protectedText.match(/[^.!?]+[.!?]+(?:\s|$)/g) || [protectedText];
-  
-  return raw.map(s => {
-    // Restore dots in abbreviations
-    return s.replace(/<<<DOT>>>/g, '.').trim();
-  }).filter(s => s.length > 3);
+
+  // Split on blank-line OR single-line breaks first — these are paragraph boundaries.
+  const paragraphs = text.split(/\n+/);
+  const out = [];
+  let paraIndex = 0;
+
+  for (const rawPara of paragraphs) {
+    const para = rawPara.replace(/\s+/g, ' ').trim();
+    if (!para) continue;
+
+    const protectedText = para.replace(abbreviations, (m) => m.replace('.', '<<<DOT>>>'));
+    const raw = protectedText.match(/[^.!?]+[.!?]+(?:\s|$)/g) || [protectedText];
+    const sents = raw
+      .map(s => s.replace(/<<<DOT>>>/g, '.').trim())
+      .filter(s => s.length > 3);
+
+    if (!sents.length) continue;
+    for (const s of sents) out.push({ text: s, para: paraIndex });
+    paraIndex++;
+  }
+
+  return out;
 }
 
 /* ===== Vocabulary ===== */
@@ -259,11 +271,16 @@ async function getSettings() {
     s = {
       id: 1, theme: 'dark', fontSize: 16, lineHeight: 1.9,
       ttsRate: 0.9, ttsVoice: '',
-      aiProvider: '', aiBaseUrl: 'https://api.openai.com/v1',
-      aiModel: 'gpt-4o-mini', aiKey: '', aiKeyMode: 'session',
+      aiProvider: '', aiBaseUrl: '/api/zen/go/v1',
+      aiModel: 'deepseek-v4-flash', aiKey: '', aiKeyMode: 'session',
       apiKeyStorageMode: 'session',
       lastOpenedBookId: null, lastView: 'bookshelf'
     };
+    await DB.settings.put(s);
+  } else if (s.aiBaseUrl === 'https://api.openai.com/v1' && s.aiModel === 'gpt-4o-mini') {
+    // Migrate untouched legacy defaults to the proxied opencode setup.
+    s.aiBaseUrl = '/api/zen/go/v1';
+    s.aiModel = 'deepseek-v4-flash';
     await DB.settings.put(s);
   }
   return s;

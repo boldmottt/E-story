@@ -16,12 +16,21 @@
 git clone https://github.com/boldmottt/E-story.git
 cd E-story
 
-# 2. 정적 서버 실행
-python3 -m http.server 8000
+# 2. AI 키 설정 (opencode.ai/zen) — 서버가 들고 있고 브라우저엔 노출 안 됨
+export OPENCODE_API_KEY=sk-...
 
-# 3. 브라우저에서 접속
+# 3. 앱 + AI 프록시 서버 실행
+python3 serve.py 8000
+
+# 4. 브라우저에서 접속
 open http://localhost:8000
 ```
+
+> **AI 연결 구조:** `serve.py`가 정적 앱을 서빙하면서 `/api/zen/*` 요청을
+> `https://opencode.ai/zen/*`로 프록시하고 `OPENCODE_API_KEY`를 주입합니다.
+> opencode.ai는 CORS 헤더를 주지 않아 브라우저가 직접 호출할 수 없기 때문에
+> 프록시가 필요합니다. 정적 서버(`python3 -m http.server`)로 띄우면 AI가
+> 동작하지 않습니다.
 
 ## 기술 스택
 

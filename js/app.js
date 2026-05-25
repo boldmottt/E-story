@@ -309,6 +309,25 @@ let App = {
     }
   },
 
+  // Group sentences into real <p> blocks by paragraph index.
+  // Legacy books (no `para` field) fall back to a single paragraph.
+  renderParagraphs() {
+    const sents = this.currentSentences;
+    let html = '';
+    let curPara = null;
+    sents.forEach((sent, i) => {
+      const p = sent.para ?? 0;
+      if (p !== curPara) {
+        if (curPara !== null) html += '</p>';
+        html += '<p>';
+        curPara = p;
+      }
+      html += `<span class="sent" data-index="${i}" data-text="${escapeHtml(sent.text)}">${escapeHtml(sent.text)} </span>`;
+    });
+    if (curPara !== null) html += '</p>';
+    return html || '<p></p>';
+  },
+
   renderReader() {
     const wrap = $('reader-wrap');
     
@@ -345,9 +364,7 @@ let App = {
         <span id="tts-rate-val" class="tts-val">${TTS._rate}x</span>
       </div>
       <div class="reader-text" id="reader-text">
-        <p>${this.currentSentences.map((sent, i) =>
-          `<span class="sent" data-index="${i}" data-text="${escapeHtml(sent.text)}">${escapeHtml(sent.text)} </span>`
-        ).join('')}</p>
+        ${this.renderParagraphs()}
       </div>
     `;
     
@@ -1080,8 +1097,8 @@ let App = {
   /* ===== Settings ===== */
   async loadSettings() {
     const s = await getSettings();
-    $('settings-url').value = s.aiBaseUrl || 'https://api.openai.com/v1';
-    $('settings-model').value = s.aiModel || 'gpt-4o-mini';
+    $('settings-url').value = s.aiBaseUrl || '/api/zen/go/v1';
+    $('settings-model').value = s.aiModel || 'deepseek-v4-flash';
     $('settings-key').value = '';
     $('settings-key-mode').value = s.apiKeyStorageMode || 'session';
     $('settings-tts-rate').value = s.ttsRate || 0.9;
@@ -1110,21 +1127,29 @@ let App = {
   },
 
   async testAI() {
+    const url = $('settings-url').value.trim();
     const key = $('settings-key').value.trim();
-    if (!key) {
+    const proxied = url.startsWith('/');
+
+    // A browser key is only required when calling an upstream directly.
+    if (!proxied && !key) {
       this.showToast('API 키를 입력해주세요.', 'error');
       return;
     }
-    AI.setKey(key, $('settings-key-mode').value);
-    AI.setBaseUrl($('settings-url').value.trim());
+    if (key) AI.setKey(key, $('settings-key-mode').value);
+    AI.setBaseUrl(url);
     AI.setModel($('settings-model').value.trim());
-    
-    try {
-      const result = await AI.sentenceGist('The sun set behind the mountains, painting the sky in shades of orange and purple.');
-      this.showToast(`✅ 연결 성공! (데모: ${result.gistKo?.slice(0, 30) || 'OK'})`, 'success');
-    } catch(e) {
-      this.showToast(`❌ 연결 실패: ${e.message}`, 'error');
+
+    this.showToast('연결 테스트 중...', 'info');
+    const result = await AI.sentenceGist('The sun set behind the mountains, painting the sky in shades of orange and purple.');
+
+    // AI._call returns an error object instead of throwing, so inspect the result.
+    if (!result || result.error || !result.gistKo) {
+      const msg = result?.message || '응답이 비어있습니다';
+      this.showToast(`❌ 연결 실패: ${msg}`, 'error');
+      return;
     }
+    this.showToast(`✅ 연결 성공! (${result.gistKo.slice(0, 30)})`, 'success');
   },
 
   /* ===== Feedback History ===== */

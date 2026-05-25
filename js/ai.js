@@ -3,7 +3,9 @@
 
 const AI = {
   _key: '',
-  _baseUrl: 'https://opencode.ai/zen/go/v1',
+  // Relative URL => routed through the same-origin proxy in serve.py, which
+  // injects the key server-side. Avoids CORS (opencode.ai sends no CORS headers).
+  _baseUrl: '/api/zen/go/v1',
   _model: 'deepseek-v4-flash',
   _mode: 'demo',
   _storageMode: 'session',
@@ -24,8 +26,13 @@ const AI = {
 - Do NOT use your training knowledge of famous books to answer questions about future events.
 - When in doubt, err on the side of NOT revealing information.`,
 
+  /** True when calls go through the same-origin proxy (which holds the key). */
+  _isProxied() {
+    return this._baseUrl.startsWith('/');
+  },
+
   async init() {
-    this._baseUrl = 'https://opencode.ai/zen/go/v1';
+    this._baseUrl = '/api/zen/go/v1';
     this._model = 'deepseek-v4-flash';
     this._key = '';
     this._mode = 'demo';
@@ -51,7 +58,12 @@ const AI = {
       // Use settings for baseUrl/model if configured
       if (s.aiBaseUrl) this._baseUrl = s.aiBaseUrl;
       if (s.aiModel) this._model = s.aiModel;
-    } catch(e) {}
+    } catch (e) {
+      console.warn('AI.init: settings load failed, using defaults', e);
+    }
+
+    // Proxied mode needs no browser-side key — the server injects it.
+    if (this._isProxied()) this._mode = 'real';
   },
 
   setKey(key, storageMode) {
@@ -111,7 +123,8 @@ const AI = {
 
   /** Core API call with No-spoiler, JSON recovery, error classification */
   async _call(messages, taskInstructions, jsonMode = true) {
-    if (this._mode !== 'real' || !this._key) {
+    // Proxied mode holds the key server-side, so a browser key isn't required.
+    if (!this._isProxied() && (this._mode !== 'real' || !this._key)) {
       window.dispatchEvent(new CustomEvent('ai:demo-fallback', { detail: { message: 'API 키가 설정되지 않음', code: 'no_key' } }));
       return this._demoResponse(messages);
     }
@@ -125,17 +138,20 @@ const AI = {
       ];
 
       const body = {
+        // deepseek-v4-flash is a reasoning model: it spends large token budgets
+        // on hidden reasoning before emitting content. Too low a cap => empty
+        // content (finish_reason "length"). 4000 leaves room for both.
         model: this._model, messages: fullMessages,
-        max_tokens: 1500, temperature: 0.3, stream: false
+        max_tokens: 4000, temperature: 0.3, stream: false
       };
       if (jsonMode) body.response_format = { type: 'json_object' };
 
+      const headers = { 'Content-Type': 'application/json' };
+      if (!this._isProxied()) headers['Authorization'] = 'Bearer ' + this._key;
+
       const res = await fetch(this._baseUrl + '/chat/completions', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + this._key
-        },
+        headers,
         body: JSON.stringify(body)
       });
 

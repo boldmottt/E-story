@@ -4,7 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>E-Story — 원서 읽기 + 영어 공부</title>
-<link rel="stylesheet" href="css/style.css?v=1.1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,500;0,7..72,600;1,7..72,400;1,7..72,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css?v=1.2">
 </head>
 <body>
 
@@ -100,11 +103,11 @@
       <h3>🤖 AI 피드백 (BYOK)</h3>
       <div class="settings-row">
         <label>API URL</label>
-        <input type="text" id="settings-url" placeholder="https://api.openai.com/v1">
+        <input type="text" id="settings-url" placeholder="/api/zen/go/v1">
       </div>
       <div class="settings-row">
         <label>모델</label>
-        <input type="text" id="settings-model" placeholder="gpt-4o-mini">
+        <input type="text" id="settings-model" placeholder="deepseek-v4-flash">
       </div>
       <div class="settings-row">
         <label>API Key</label>
@@ -117,7 +120,7 @@
           <option value="persist">브라우저에 저장</option>
         </select>
       </div>
-      <div class="settings-note">키를 입력하지 않으면 데모 모드로 동작합니다. OpenCode Zen, OpenAI, Claude 등 OpenAI 호환 API 사용 가능.</div>
+      <div class="settings-note">기본값(<code>/api/zen/go/v1</code>)은 serve.py 프록시를 통해 동작하며 키는 서버의 <code>OPENCODE_API_KEY</code>가 사용됩니다 — 여기에 키를 입력할 필요가 없습니다. 직접 다른 OpenAI 호환 API를 쓰려면 전체 URL과 키를 입력하세요. 정적 호스팅(프록시 없음)에서는 키 미입력 시 데모 모드로 동작합니다.</div>
     </div>
 
     <div class="settings-group">
@@ -200,11 +203,11 @@
 
 <!-- ===== Scripts (cache-busting: bump v=1.1 on deploy to force fresh files) ===== -->
 <script src="https://unpkg.com/dexie@3.2.6/dist/dexie.js" integrity="sha384-0FuYOPc9K+S90Ae9gpIcRLs/GeN1brbdbow9ZV3OzQljagLIVPEhheGkbvfGnQAW" crossorigin="anonymous"></script>
-<script src="js/db.js?v=1.1"></script>
-<script src="js/ai.js?v=1.1"></script>
-<script src="js/tts.js?v=1.1"></script>
-<script src="js/sync.js?v=1.1"></script>
-<script src="js/app.js?v=1.1"></script>
+<script src="js/db.js?v=1.2"></script>
+<script src="js/ai.js?v=1.2"></script>
+<script src="js/tts.js?v=1.2"></script>
+<script src="js/sync.js?v=1.2"></script>
+<script src="js/app.js?v=1.2"></script>
 
 </body>
 </html>

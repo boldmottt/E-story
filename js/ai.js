@@ -254,6 +254,21 @@ const AI = {
     });
   },
 
+  /** Model's OWN Korean translations of the English sentence, independent of
+   *  the user's attempt — used for the final comparison view so 직역/의역이
+   *  사용자 입력을 베끼지 않고 서로 구분된다. */
+  async modelTranslations(sentence) {
+    const key = this._cacheKey('mt', sentence);
+    return this._cached(key, async () => {
+      const r = await this._call([
+        { role: 'system', content: 'Return JSON: { "literalTranslationKo": "...", "naturalTranslationKo": "...", "storyNoteKo": "..." }' },
+        { role: 'user', content: `English sentence: "${sentence}"` }
+      ], '이 영어 문장을 한국어로 두 가지로 번역하라. 사용자의 번역과 무관하게 원문만 보고 새로 작성한다. literalTranslationKo = 어순·구문을 살린 직역. naturalTranslationKo = 한국어답게 매끄러운 의역. 두 번역은 반드시 서로 달라야 한다(같은 문장 반복 금지). storyNoteKo = 이 문장의 뉘앙스·장면 의미 한 줄. NO spoilers.');
+      if (r && !r.error) return r;
+      return { error: true };
+    });
+  },
+
   async feedback(sentence, userTranslation, previousIssues = []) {
     return await this._call([
       { role: 'system', content: `You are an English tutor for a Korean learner reading a novel.

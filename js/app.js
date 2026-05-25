@@ -597,33 +597,6 @@ let App = {
     fb.classList.add('open');
     
     if (data.status === 'finished') {
-      // Only show comparison when truly finished (H3 fix)
-      const cv = $('study-compare');
-      cv.classList.add('open');
-      cv.innerHTML = `
-        <div class="cv-row">
-          <div class="cv-box">
-            <div class="cv-label">내 해석</div>
-            <div class="cv-text">${escapeHtml(text)}</div>
-          </div>
-          <div class="cv-box">
-            <div class="cv-label">구조 해석 (직역)</div>
-            <div class="cv-text">${escapeHtml(data.literalTranslationKo || '—')}</div>
-          </div>
-        </div>
-        <div class="cv-row">
-          <div class="cv-box" style="grid-column:1/-1">
-            <div class="cv-label">자연 해석 (의역)</div>
-            <div class="cv-text">${escapeHtml(data.naturalTranslationKo || '—')}</div>
-          </div>
-        </div>
-        ${data.storyNoteKo ? `<div class="cv-note">💡 ${escapeHtml(data.storyNoteKo)}</div>` : ''}
-      `;
-      
-      $('study-submit').textContent = '✅ 완료';
-      $('study-submit').disabled = true;
-      
-      // Save to feedback history
       this.feedbackAttempts.push({
         userTranslation: text,
         aiStatus: data.status,
@@ -632,36 +605,8 @@ let App = {
         hintKo: data.hintKo,
         l1InterferenceKo: data.l1InterferenceKo
       });
-      
-      await saveFeedbackSession(
-        this.currentBook?.id, this.selectedSentence?.index,
-        this.selectedSentence?.text, this.feedbackAttempts,
-        text, data.literalTranslationKo, data.naturalTranslationKo, data.storyNoteKo
-      );
-      Sync.scheduleSync();
-      
-      // Mark queue as done (M4 fix: only on finished)
-      if (this._currentQueueId) {
-        await markQueueDone(this._currentQueueId);
-        this._currentQueueId = null;
-        await this.updateQueueBadge();
-      }
-      
-      // Story Buddy buttons
-      const buddyDiv = $('study-buddy');
-      buddyDiv.innerHTML = `
-        <div class="buddy-actions">
-          <button class="buddy-btn" onclick="App.askBuddy('situation')">📌 지금 상황은?</button>
-          <button class="buddy-btn" onclick="App.askBuddy('speaker')">🗣️ 누가 말하는 중?</button>
-          <button class="buddy-btn" onclick="App.askBuddy('mood')">🎭 분위기가 어때?</button>
-          <button class="buddy-btn" onclick="App.askBuddy('cultural')">🌍 문화 배경</button>
-        </div>
-        <div id="buddy-response" class="buddy-response"></div>
-      `;
-      
-      // Save to vocabulary
-      this._offerVocabSave();
-      
+      await this._renderComparison(this.selectedSentence.text, text);
+
     } else if (data.status === 'good_enough') {
       // H3: Show "한 번 더 다듬을까요?" dialog instead of revealing translations
       const fb = $('study-feedback');
@@ -734,54 +679,60 @@ let App = {
   },
 
   async _finishWithAI(sentence, userTranslation) {
-    const fb = $('study-feedback');
-    fb.innerHTML = '<div class="fb-label">📝 최종 해석 생성 중...</div>';
-    
-    // Call AI with explicit request for finished status
-    const data = await AI.feedback(sentence, userTranslation, this.feedbackAttempts);
-    
+    await this._renderComparison(sentence, userTranslation);
+  },
+
+  // Shared finish view. The literal/natural translations come from a dedicated
+  // AI call on the ENGLISH source (not the feedback loop), so they never echo
+  // the user's input and are reliably distinct from each other.
+  async _renderComparison(sentence, userText) {
     const cv = $('study-compare');
     cv.classList.add('open');
+    cv.innerHTML = '<div class="cv-label">📝 모델 해석 생성 중...</div>';
+
+    const mt = await AI.modelTranslations(sentence);
+    const ok = mt && !mt.error;
+    const literal = ok ? (mt.literalTranslationKo || null) : null;
+    const natural = ok ? (mt.naturalTranslationKo || null) : null;
+    const note = ok ? (mt.storyNoteKo || null) : null;
+
     cv.innerHTML = `
       <div class="cv-row">
         <div class="cv-box">
           <div class="cv-label">내 해석</div>
-          <div class="cv-text">${escapeHtml(userTranslation)}</div>
+          <div class="cv-text">${escapeHtml(userText)}</div>
         </div>
         <div class="cv-box">
           <div class="cv-label">구조 해석 (직역)</div>
-          <div class="cv-text">${escapeHtml(data.literalTranslationKo || data.naturalTranslationKo || '—')}</div>
+          <div class="cv-text">${escapeHtml(literal || '—')}</div>
         </div>
       </div>
       <div class="cv-row">
         <div class="cv-box" style="grid-column:1/-1">
           <div class="cv-label">자연 해석 (의역)</div>
-          <div class="cv-text">${escapeHtml(data.naturalTranslationKo || data.literalTranslationKo || '—')}</div>
+          <div class="cv-text">${escapeHtml(natural || '—')}</div>
         </div>
       </div>
-      ${data.storyNoteKo ? `<div class="cv-note">💡 ${escapeHtml(data.storyNoteKo)}</div>` : ''}
+      ${note ? `<div class="cv-note">💡 ${escapeHtml(note)}</div>` : ''}
     `;
-    
+
     $('study-submit').textContent = '✅ 완료';
     $('study-submit').disabled = true;
-    
+
     await saveFeedbackSession(
       this.currentBook?.id, this.selectedSentence?.index,
       this.selectedSentence?.text, this.feedbackAttempts,
-      userTranslation, data.literalTranslationKo, data.naturalTranslationKo, data.storyNoteKo
+      userText, literal, natural, note
     );
     Sync.scheduleSync();
-    
-    // Mark queue as done
+
     if (this._currentQueueId) {
       await markQueueDone(this._currentQueueId);
       this._currentQueueId = null;
       await this.updateQueueBadge();
     }
-    
-    // Story Buddy
-    const buddyDiv = $('study-buddy');
-    buddyDiv.innerHTML = `
+
+    $('study-buddy').innerHTML = `
       <div class="buddy-actions">
         <button class="buddy-btn" onclick="App.askBuddy('situation')">📌 지금 상황은?</button>
         <button class="buddy-btn" onclick="App.askBuddy('speaker')">🗣️ 누가 말하는 중?</button>
@@ -790,7 +741,6 @@ let App = {
       </div>
       <div id="buddy-response" class="buddy-response"></div>
     `;
-    
     this._offerVocabSave();
   },
 

@@ -166,7 +166,7 @@ let App = {
     const books = await getBooks();
     const grid = $('bookshelf-grid');
     
-    let html = '<div class="upload-area" id="upload-area"><div class="upload-icon">📂</div><div class="upload-label">txt 파일을 업로드하세요</div><div class="upload-hint">또는 여기로 드래그 & 드롭</div><input type="file" id="file-input" accept=".txt" style="display:none"></div>';
+    let html = '<div class="upload-area" id="upload-area"><div class="upload-icon">📂</div><div class="upload-label">txt 파일을 업로드하세요</div><div class="upload-hint">또는 여기로 드래그 & 드롭</div><input type="file" id="file-input" accept=".txt" class="hidden-input"></div>';
     
     books.forEach(book => {
       const pct = book.totalChunks > 0 ? Math.round((book.currentChunk / book.totalChunks) * 100) : 0;
@@ -371,15 +371,27 @@ let App = {
       return `<span class="qm-word word-chip" data-word="${clean}">${clean}</span>`;
     }).join('');
     
+    // Quick menu action handler — delegated (Bug 3: replace inline onclick)
+    menu.addEventListener('click', (e) => {
+      const btn = e.target.closest('.qm-btn');
+      if (!btn) return;
+      const action = btn.dataset.action;
+      if (action === 'word') this.wordHint();
+      else if (action === 'grammar') this.grammarHint();
+      else if (action === 'gist') this.sentenceGist();
+      else if (action === 'study') this.openStudy();
+      else if (action === 'queue') this.queueLater();
+    });
+    
     menu.innerHTML = `
       <div class="qm-sentence">${escapeHtml(text)}</div>
       <div class="qm-words-wrap">${wordHtml}</div>
       <div class="qm-actions">
-        <button class="qm-btn word" onclick="App.wordHint()">📖 단어 힌트</button>
-        <button class="qm-btn grammar" onclick="App.grammarHint()">🔍 구문 힌트</button>
-        <button class="qm-btn gist" onclick="App.sentenceGist()">📋 문장 요지</button>
-        <button class="qm-btn study" onclick="App.openStudy()">✍️ 해석해보기</button>
-        <button class="qm-btn queue" onclick="App.queueLater()">⏰ 나중에</button>
+        <button class="qm-btn word" data-action="word">📖 단어 힌트</button>
+        <button class="qm-btn grammar" data-action="grammar">🔍 구문 힌트</button>
+        <button class="qm-btn gist" data-action="gist">📋 문장 요지</button>
+        <button class="qm-btn study" data-action="study">✍️ 해석해보기</button>
+        <button class="qm-btn queue" data-action="queue">⏰ 나중에</button>
       </div>
       <div id="hint-result" class="qm-hint-result"></div>
     `;

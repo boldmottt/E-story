@@ -260,3 +260,4 @@ a{color:var(--a0);text-decoration:none}
   .study-panel{width:100%}
   .compare-view .cv-row{grid-template-columns:1fr}
 }
+.hidden-input{display:none}

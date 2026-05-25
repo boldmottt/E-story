@@ -56,6 +56,26 @@ let App = {
       }
     });
     
+    // Topbar delegation (review button)
+    $('topbar-title')?.closest('.topbar')?.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      if (btn.dataset.action === 'review') this.startReview();
+    });
+    
+    // Vocab-header delegation (search, filter, review)
+    document.querySelector('.vocab-header')?.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      if (btn.dataset.action === 'review') this.startReview();
+    });
+    document.querySelector('.vocab-header')?.addEventListener('input', (e) => {
+      if (e.target.dataset.action === 'renderVocab') this.renderVocabulary();
+    });
+    document.querySelector('.vocab-header')?.addEventListener('change', (e) => {
+      if (e.target.dataset.action === 'renderVocab') this.renderVocabulary();
+    });
+    
     // Close study panel
     $('study-close')?.addEventListener('click', () => this.closeStudy());
     

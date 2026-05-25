@@ -41,7 +41,7 @@
   <header class="topbar">
     <div class="topbar-title" id="topbar-title">📚 내 서재</div>
     <div class="topbar-right">
-      <button class="topbar-btn" onclick="App.startReview()">🔄 복습</button>
+      <button class="topbar-btn" data-action="review">🔄 복습</button>
     </div>
   </header>
 
@@ -65,14 +65,14 @@
   <!-- ===== Vocabulary Page ===== -->
   <div class="content" id="vocabulary-page">
     <div class="vocab-header">
-      <input type="text" id="vocab-search" placeholder="단어 검색..." oninput="App.renderVocabulary()">
-      <select id="vocab-filter" onchange="App.renderVocabulary()">
+      <input type="text" id="vocab-search" placeholder="단어 검색..." data-trigger="input" data-action="renderVocab">
+      <select id="vocab-filter" data-trigger="change" data-action="renderVocab">
         <option value="all">전체</option>
         <option value="new">🆕 새 단어</option>
         <option value="learning">📖 학습중</option>
         <option value="known">✅ 알고 있음</option>
       </select>
-      <button class="btn" onclick="App.startReview()">🔄 복습 시작</button>
+      <button class="btn" data-action="review">🔄 복습 시작</button>
     </div>
     <div class="vocab-grid" id="vocab-grid"></div>
   </div>
@@ -145,8 +145,8 @@
         <button class="btn-s" id="import-btn">📥 가져오기</button>
         <input type="file" id="import-file" accept=".json" class="hidden-input">
       </div>
-      <button class="btn-s" id="settings-test-ai" class="mt-8">🔌 AI 연결 테스트</button>
-      <button class="btn" id="settings-save" class="mt-8">💾 설정 저장</button>
+      <button class="btn-s mt-8" id="settings-test-ai">🔌 AI 연결 테스트</button>
+      <button class="btn mt-8" id="settings-save">💾 설정 저장</button>
     </div>
   </div>
 </div>

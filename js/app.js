@@ -13,7 +13,6 @@ let App = {
   bookData: null,
   readerMode: 'story', // story | tts (reader sub-mode)
   feedbackAttempts: [],
-  mode: 'story', // story | study | review
   queueCount: 0,
   _scrollThrottleTimer: null,
 
@@ -33,13 +32,28 @@ let App = {
     $('import-btn')?.addEventListener('click', () => $('import-file')?.click());
     $('import-file')?.addEventListener('change', (e) => this.importBackup(e));
     
-    // Upload
-    $('file-input')?.addEventListener('change', (e) => this.handleUpload(e));
-    $('upload-area')?.addEventListener('click', () => $('file-input')?.click());
-    $('upload-area')?.addEventListener('dragover', (e) => e.preventDefault());
-    $('upload-area')?.addEventListener('drop', (e) => {
-      e.preventDefault();
-      if (e.dataTransfer.files.length) this.processFile(e.dataTransfer.files[0]);
+    // Upload & bookshelf-grid delegation (single listener)
+    const grid = $('bookshelf-grid');
+    grid.addEventListener('click', (e) => {
+      const card = e.target.closest('.book-card');
+      if (card) { this.openBook(parseInt(card.dataset.id)); return; }
+      if (e.target.closest('#upload-area')) {
+        const input = document.getElementById('file-input');
+        if (input) input.click();
+      }
+    });
+    grid.addEventListener('change', (e) => {
+      if (e.target.id === 'file-input') this.handleUpload(e);
+    });
+    grid.addEventListener('dragover', (e) => {
+      if (e.target.closest('#upload-area')) e.preventDefault();
+    });
+    grid.addEventListener('drop', (e) => {
+      const area = e.target.closest('#upload-area');
+      if (area) {
+        e.preventDefault();
+        if (e.dataTransfer.files.length) this.processFile(e.dataTransfer.files[0]);
+      }
     });
     
     // Close study panel
@@ -111,22 +125,28 @@ let App = {
     updateBookProgress(this.currentBook.id, this.currentSelectedChunkIndex, offset);
   },
 
+  async _patchSettings(patch) {
+    const s = await getSettings();
+    await saveSettings({ ...s, ...patch });
+  },
+
   switchView(view) {
     this.currentView = view;
     document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.view === view));
     document.querySelectorAll('.content').forEach(c => c.classList.toggle('active', c.id === view + '-page'));
     
-    if (view === 'vocabulary') this.renderVocabulary();
-    if (view === 'queue') this.renderQueue();
-    if (view === 'history') this.renderHistory();
-    if (view === 'settings') this.loadSettings();
+    const renderers = {
+      vocabulary: () => this.renderVocabulary(),
+      queue: () => this.renderQueue(),
+      history: () => this.renderHistory(),
+      settings: () => this.loadSettings()
+    };
+    renderers[view]?.();
     
     this.updateTopbarTitle(view);
     
     // Persist current view for restore
-    getSettings().then(s => {
-      saveSettings({ ...s, lastView: view });
-    });
+    this._patchSettings({ lastView: view });
   },
 
   updateTopbarTitle(view) {
@@ -145,62 +165,20 @@ let App = {
   async loadBookshelf() {
     const books = await getBooks();
     const grid = $('bookshelf-grid');
-    grid.innerHTML = '';
     
-    // Add upload area as first card
-    const uploadDiv = document.createElement('div');
-    uploadDiv.className = 'upload-area';
-    uploadDiv.id = 'upload-area';
-    uploadDiv.innerHTML = '<div class="upload-icon">📂</div><div class="upload-label">txt 파일을 업로드하세요</div><div class="upload-hint">또는 여기로 드래그 & 드롭</div><input type="file" id="file-input" accept=".txt" style="display:none">';
-    grid.appendChild(uploadDiv);
-    
-    // Use event delegation instead of per-card listeners (M1)
-    grid.addEventListener('click', (e) => {
-      const card = e.target.closest('.book-card');
-      if (card) {
-        this.openBook(parseInt(card.dataset.id));
-        return;
-      }
-      // Upload area click
-      if (e.target.closest('#upload-area')) {
-        const input = document.getElementById('file-input');
-        if (input) input.click();
-      }
-    });
-    
-    // File input change
-    grid.addEventListener('change', (e) => {
-      if (e.target.id === 'file-input') {
-        this.handleUpload(e);
-      }
-    });
-    
-    // Drag & drop on upload area
-    grid.addEventListener('dragover', (e) => {
-      if (e.target.closest('#upload-area')) e.preventDefault();
-    });
-    grid.addEventListener('drop', (e) => {
-      const area = e.target.closest('#upload-area');
-      if (area) {
-        e.preventDefault();
-        if (e.dataTransfer.files.length) this.processFile(e.dataTransfer.files[0]);
-      }
-    });
+    let html = '<div class="upload-area" id="upload-area"><div class="upload-icon">📂</div><div class="upload-label">txt 파일을 업로드하세요</div><div class="upload-hint">또는 여기로 드래그 & 드롭</div><input type="file" id="file-input" accept=".txt" style="display:none"></div>';
     
     books.forEach(book => {
       const pct = book.totalChunks > 0 ? Math.round((book.currentChunk / book.totalChunks) * 100) : 0;
-      const card = document.createElement('div');
-      card.className = 'book-card';
-      card.dataset.id = book.id;
-      card.innerHTML = `
+      html += `<div class="book-card" data-id="${book.id}">
         <div class="title">${escapeHtml(book.title)}</div>
         <div class="author">${escapeHtml(book.fileName)}</div>
         <div class="progress"><div class="progress-fill" style="width:${pct}%"></div></div>
         <div class="meta"><span>${pct}% 완료</span><span>${book.totalChunks}챕터</span></div>
-      `;
-      grid.appendChild(card);
+      </div>`;
     });
     
+    grid.innerHTML = html;
     this.updateQueueBadge();
   },
 
@@ -228,9 +206,7 @@ let App = {
     if (!this.currentBook) return;
 
     // Save last opened book for position restore
-    getSettings().then(s => {
-      saveSettings({ ...s, lastOpenedBookId: bookId });
-    });
+    this._patchSettings({ lastOpenedBookId: bookId });
 
     this.bookData = { id: bookId, book: this.currentBook };
     const chunks = await getChunks(bookId);
@@ -260,130 +236,87 @@ let App = {
 
   renderReader() {
     const wrap = $('reader-wrap');
-    wrap.innerHTML = '';
     
     // Apply font size from settings
     getSettings().then(s => {
       wrap.style.fontSize = (s.fontSize || 16) + 'px';
     });
     
-    // Header
-    const header = document.createElement('div');
-    header.className = 'reader-header';
-    header.innerHTML = `
-      <div class="ch-title">${escapeHtml(this.currentChunk.title)}</div>
-      <div class="book-title">${escapeHtml(this.currentBook.title)}</div>
+    const prevDisabled = this.currentSelectedChunkIndex <= 0;
+    const nextDisabled = this.currentSelectedChunkIndex >= this.currentChunks.length - 1;
+    const ttsOpen = this.readerMode === 'tts';
+    
+    wrap.innerHTML = `
+      <div class="reader-header">
+        <div class="ch-title">${escapeHtml(this.currentChunk.title)}</div>
+        <div class="book-title">${escapeHtml(this.currentBook.title)}</div>
+      </div>
+      <div id="chapter-summary" class="chapter-summary" hidden></div>
+      <div class="ch-nav">
+        <button class="topbar-btn ch-nav-btn" data-dir="prev"${prevDisabled ? ' disabled' : ''}>◀ 이전</button>
+        <span class="ch-label">${this.currentSelectedChunkIndex + 1} / ${this.currentChunks.length}</span>
+        <button class="topbar-btn ch-nav-btn" data-dir="next"${nextDisabled ? ' disabled' : ''}>다음 ▶</button>
+      </div>
+      <div class="mode-selector">
+        <button class="mode-btn${this.readerMode === 'story' ? ' active-mode' : ''}" data-mode="story">📖 읽기</button>
+        <button class="mode-btn${this.readerMode === 'tts' ? ' active-mode' : ''}" data-mode="tts">🔊 낭독</button>
+      </div>
+      <div id="tts-bar" class="tts-bar${ttsOpen ? ' open' : ''}">
+        <button class="topbar-btn" id="tts-play">▶️</button>
+        <button class="topbar-btn" id="tts-pause">⏸️</button>
+        <button class="topbar-btn" id="tts-stop">⏹️</button>
+        <span class="tts-label">속도:</span>
+        <input type="range" id="tts-rate" min="0.3" max="2.0" step="0.1" value="${TTS._rate}">
+        <span id="tts-rate-val" class="tts-val">${TTS._rate}x</span>
+      </div>
+      <div class="reader-text" id="reader-text">
+        <p>${this.currentSentences.map((sent, i) =>
+          `<span class="sent" data-index="${i}" data-text="${escapeHtml(sent.text)}">${escapeHtml(sent.text)} </span>`
+        ).join('')}</p>
+      </div>
     `;
-    wrap.appendChild(header);
     
-    // Chapter Summary section
-    const csDiv = document.createElement('div');
-    csDiv.id = 'chapter-summary';
-    csDiv.className = 'chapter-summary';
-    csDiv.style.cssText = 'margin-bottom:14px;padding:10px 12px;background:var(--bg3);border-radius:8px;font-size:12px;line-height:1.6;display:none';
-    wrap.appendChild(csDiv);
+    // Single event delegation for wrap
+    if (!wrap._readerDelegation) {
+      wrap.addEventListener('click', (e) => {
+        const navBtn = e.target.closest('.ch-nav-btn');
+        if (navBtn) {
+          if (navBtn.dataset.dir === 'prev') this.goToChunk(this.currentSelectedChunkIndex - 1);
+          else if (navBtn.dataset.dir === 'next') this.goToChunk(this.currentSelectedChunkIndex + 1);
+          return;
+        }
+        
+        const modeBtn = e.target.closest('.mode-btn');
+        if (modeBtn) {
+          this.setReaderMode(modeBtn.dataset.mode);
+          return;
+        }
+        
+        if (e.target.closest('#tts-play')) { this.startTTS(); return; }
+        if (e.target.closest('#tts-pause')) { TTS.isSpeaking() ? TTS.pause() : TTS.resume(); return; }
+        if (e.target.closest('#tts-stop')) { TTS.stop(); return; }
+        
+        const sentEl = e.target.closest('.sent');
+        if (sentEl) {
+          const index = parseInt(sentEl.dataset.index);
+          const text = sentEl.dataset.text;
+          this.onSentenceClick(index, text);
+        }
+      });
+      wrap._readerDelegation = true;
+    }
     
-    // Chapter navigation
-    const navDiv = document.createElement('div');
-    navDiv.className = 'ch-nav';
-    const prevBtn = document.createElement('button');
-    prevBtn.textContent = '◀ 이전';
-    prevBtn.className = 'topbar-btn ch-nav-btn';
-    prevBtn.disabled = this.currentSelectedChunkIndex <= 0;
-    if (prevBtn.disabled) prevBtn.style.opacity = '0.4';
-    prevBtn.onclick = () => this.goToChunk(this.currentSelectedChunkIndex - 1);
-    
-    const chLabel = document.createElement('span');
-    chLabel.className = 'ch-label';
-    chLabel.textContent = `${this.currentSelectedChunkIndex + 1} / ${this.currentChunks.length}`;
-    
-    const nextBtn = document.createElement('button');
-    nextBtn.textContent = '다음 ▶';
-    nextBtn.className = 'topbar-btn ch-nav-btn';
-    nextBtn.disabled = this.currentSelectedChunkIndex >= this.currentChunks.length - 1;
-    if (nextBtn.disabled) nextBtn.style.opacity = '0.4';
-    nextBtn.onclick = () => this.goToChunk(this.currentSelectedChunkIndex + 1);
-    
-    navDiv.appendChild(prevBtn);
-    navDiv.appendChild(chLabel);
-    navDiv.appendChild(nextBtn);
-    wrap.appendChild(navDiv);
-    
-    // Mode selector
-    const modes = document.createElement('div');
-    modes.className = 'mode-selector';
-    const modeNames = ['story', 'tts'];
-    const modeLabels = ['📖 읽기', '🔊 낭독'];
-    modeNames.forEach((m, i) => {
-      const btn = document.createElement('button');
-      btn.className = `mode-btn${m === this.readerMode ? ' active-mode' : ''}`;
-      btn.textContent = modeLabels[i];
-      btn.style.background = m === this.readerMode ? 'var(--a0)' : 'var(--bg3)';
-      btn.style.color = m === this.readerMode ? '#000' : 'var(--tx2)';
-      btn.onclick = () => this.setReaderMode(m);
-      modes.appendChild(btn);
-    });
-    
-    // TTS controls (hidden by default)
-    const ttsBar = document.createElement('div');
-    ttsBar.id = 'tts-bar';
-    ttsBar.className = 'tts-bar';
-    ttsBar.innerHTML = `
-      <button class="topbar-btn" id="tts-play">▶️</button>
-      <button class="topbar-btn" id="tts-pause">⏸️</button>
-      <button class="topbar-btn" id="tts-stop">⏹️</button>
-      <span class="tts-label">속도:</span>
-      <input type="range" id="tts-rate" min="0.3" max="2.0" step="0.1" value="${TTS._rate}" style="width:80px">
-      <span id="tts-rate-val" class="tts-val">${TTS._rate}x</span>
-    `;
-    wrap.appendChild(modes);
-    wrap.appendChild(ttsBar);
-    
-    // Text with event delegation
-    const textDiv = document.createElement('div');
-    textDiv.className = 'reader-text';
-    textDiv.id = 'reader-text';
-    
-    // Group sentences into paragraphs
-    let para = document.createElement('p');
-    this.currentSentences.forEach((sent, i) => {
-      const span = document.createElement('span');
-      span.className = 'sent';
-      span.dataset.index = i;
-      span.dataset.text = sent.text;
-      span.textContent = sent.text + ' ';
-      para.appendChild(span);
-    });
-    textDiv.appendChild(para);
-    wrap.appendChild(textDiv);
-    
-    // Event delegation for sentence clicks (H2: single listener)
-    textDiv.addEventListener('click', (e) => {
-      const sentEl = e.target.closest('.sent');
-      if (!sentEl) return;
-      const index = parseInt(sentEl.dataset.index);
-      const text = sentEl.dataset.text;
-      this.onSentenceClick(index, text);
-    });
-    
-    // TTS controls - rate slider saves via TTS.setRate (M10 fix)
+    // Rate slider events
     const rateSlider = $('tts-rate');
     if (rateSlider) {
       rateSlider.addEventListener('input', () => {
         TTS._rate = parseFloat(rateSlider.value);
         $('tts-rate-val').textContent = TTS._rate + 'x';
       });
-      // Save rate on change (drag end or click)
       rateSlider.addEventListener('change', () => {
         TTS.setRate(parseFloat(rateSlider.value));
       });
     }
-    $('tts-play')?.addEventListener('click', () => this.startTTS());
-    $('tts-pause')?.addEventListener('click', () => TTS.isSpeaking() ? TTS.pause() : TTS.resume());
-    $('tts-stop')?.addEventListener('click', () => TTS.stop());
-    
-    // Close quick menu on outside click (single listener)
-    // Using capture phase to prevent interference
   },
 
   goToChunk(index) {
@@ -415,7 +348,7 @@ let App = {
 
   setReaderMode(mode) {
     this.readerMode = mode;
-    $('tts-bar').style.display = mode === 'tts' ? 'flex' : 'none';
+    $('tts-bar').classList.toggle('open', mode === 'tts');
   },
 
   /* ===== Sentence Click → Quick Menu ===== */
@@ -451,20 +384,15 @@ let App = {
       <div id="hint-result" class="qm-hint-result"></div>
     `;
     
-    // Click on a word token to select it
+    // Click on a word token to select it (CSS hover via .qm-word:hover)
     menu.querySelectorAll('.qm-word').forEach(el => {
       el.addEventListener('click', (e) => {
         e.stopPropagation();
-        // Deselect all, select this one
-        menu.querySelectorAll('.qm-word').forEach(w => w.style.background = 'var(--bg3)');
-        el.style.background = 'var(--a0)';
-        el.style.color = '#000';
+        menu.querySelectorAll('.qm-word').forEach(w => w.classList.remove('selected'));
+        el.classList.add('selected');
         this.selectedWord = el.dataset.word;
-        // Auto-show word hint for this word
         this.wordHint(el.dataset.word);
       });
-      el.addEventListener('mouseenter', () => { if (el.style.background !== 'var(--a0)') el.style.background = 'var(--bg4)'; });
-      el.addEventListener('mouseleave', () => { if (el.style.background !== 'var(--a0)') el.style.background = 'var(--bg3)'; });
     });
     
     menu.classList.add('open');
@@ -780,24 +708,24 @@ let App = {
     const csDiv = $('chapter-summary');
     if (!csDiv) return;
     const text = this.currentChunk?.content || '';
-    if (!text || text.length < 50) { csDiv.style.display = 'none'; return; }
-    csDiv.style.display = 'block';
+    if (!text || text.length < 50) { csDiv.hidden = true; return; }
+    csDiv.hidden = false;
     csDiv.innerHTML = '🔄 요약 불러오는 중...';
     const result = await AI.chapterSummary(text);
     if (result && !result.error && result.summary3lines) {
       let html = `<div class="cs-summary">📝 ${escapeHtml(result.summary3lines)}</div>`;
       if (result.characters?.length) {
-        html += `<div class="cs-characters" style="margin-top:5px">👤 <b>인물:</b> ${result.characters.map(c => escapeHtml(c)).join(', ')}</div>`;
+        html += `<div class="cs-characters">👤 <b>인물:</b> ${result.characters.map(c => escapeHtml(c)).join(', ')}</div>`;
       }
       if (result.keyScenes?.length) {
-        html += `<div class="cs-scenes" style="margin-top:3px">🎬 <b>장면:</b> ${result.keyScenes.map(s => escapeHtml(s)).join(', ')}</div>`;
+        html += `<div class="cs-scenes">🎬 <b>장면:</b> ${result.keyScenes.map(s => escapeHtml(s)).join(', ')}</div>`;
       }
       if (result.expressions?.length) {
-        html += `<div class="cs-expr" style="margin-top:3px">💡 <b>표현:</b> ${result.expressions.map(e => escapeHtml(e)).join(', ')}</div>`;
+        html += `<div class="cs-expr">💡 <b>표현:</b> ${result.expressions.map(e => escapeHtml(e)).join(', ')}</div>`;
       }
       csDiv.innerHTML = html;
     } else {
-      csDiv.style.display = 'none';
+      csDiv.hidden = true;
     }
   },
 

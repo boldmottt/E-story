@@ -163,8 +163,7 @@ function splitSentences(text) {
   text = text.replace(/\s+/g, ' ').trim();
   
   // Handle common abbreviations that shouldn't split (deduped)
-  const abbreviations = /\b(Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc|e\.g|i\.e|Esq|Hon|Capt|Col|Gen|Lt|Sgt|Vol|Dept|Ave|Blvd|Rd|Pkwy|Sq|Ct|Ln|Way|Pl|Cir)\.\s/g;
-  const abbrHits = [...text.matchAll(new RegExp(abbreviations, 'gi'))];
+  const abbreviations = /\b(Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc|e\.g|i\.e|Capt|Col|Gen|Lt|Sgt|Vol|Dept|Ave|Blvd|Rd)\.\s/g;
   const protectedText = text.replace(abbreviations, (m) => m.replace('.', '<<<DOT>>>'));
   
   // Split by sentence-ending punctuation
@@ -276,18 +275,13 @@ async function saveSettings(s) {
 }
 
 /* ===== Backup/Restore ===== */
+const EXPORT_TABLES = ['books','chunks','sentences','vocabulary','feedbackSessions','translationAttempts','studyQueue','highlights','settings'];
+
 async function exportData() {
+  const entries = await Promise.all(EXPORT_TABLES.map(name => DB[name].toArray().then(rows => [name, rows])));
   const data = {
     version: 2, exportedAt: new Date().toISOString(),
-    books: await DB.books.toArray(),
-    chunks: await DB.chunks.toArray(),
-    sentences: await DB.sentences.toArray(),
-    vocabulary: await DB.vocabulary.toArray(),
-    feedbackSessions: await DB.feedbackSessions.toArray(),
-    translationAttempts: await DB.translationAttempts.toArray(),
-    studyQueue: await DB.studyQueue.toArray(),
-    highlights: await DB.highlights.toArray(),
-    settings: await DB.settings.toArray()
+    ...Object.fromEntries(entries)
   };
   return JSON.stringify(data, null, 2);
 }
@@ -295,8 +289,7 @@ async function exportData() {
 async function importData(json) {
   const data = JSON.parse(json);
   // Validate structure before deleting
-  const expectedTables = ['books','chunks','sentences','vocabulary','feedbackSessions','translationAttempts','studyQueue','highlights','settings'];
-  for (const table of expectedTables) {
+  for (const table of EXPORT_TABLES) {
     if (data[table] !== undefined && !Array.isArray(data[table])) {
       throw new Error(`Invalid format: "${table}" is not an array`);
     }
@@ -306,7 +299,7 @@ async function importData(json) {
   }
   await DB.delete();
   await DB.open();
-  for (const table of expectedTables) {
+  for (const table of EXPORT_TABLES) {
     if (data[table]?.length) await DB[table].bulkAdd(data[table]);
   }
 }

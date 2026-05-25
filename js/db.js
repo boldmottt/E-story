@@ -38,18 +38,16 @@ async function addBook(file, content) {
   });
   // Split into chunks (chapters/sections)
   const chunks = splitIntoChunks(content);
-  const chunkIds = [];
-  
+
   // H2/M9: Use bulkAdd for sentences instead of serial adds
   const allSentences = [];
-  
+
   for (let i = 0; i < chunks.length; i++) {
     const cid = await DB.chunks.add({
       bookId: id, index: i, title: chunks[i].title || `Chapter ${i+1}`,
       content: chunks[i].text, startOffset: chunks[i].start, endOffset: chunks[i].end,
       createdAt: Date.now()
     });
-    chunkIds.push(cid);
     // Split chunk into sentences
     const sents = splitSentences(chunks[i].text);
     for (let j = 0; j < sents.length; j++) {
@@ -266,19 +264,26 @@ async function getFeedbackHistory(bookId) {
 
 /* ===== Settings (with extended defaults for C5 restore) ===== */
 async function getSettings() {
+  const isLocal = ['localhost', '127.0.0.1'].includes(location.hostname);
   let s = await DB.settings.get(1);
   if (!s) {
     s = {
       id: 1, theme: 'dark', fontSize: 16, lineHeight: 1.9,
       ttsRate: 0.9, ttsVoice: '',
-      aiProvider: '', aiBaseUrl: '/api/zen/go/v1',
-      aiModel: 'deepseek-v4-flash', aiKey: '', aiKeyMode: 'session',
+      aiProvider: '',
+      aiBaseUrl: isLocal ? '/api/zen/go/v1' : 'https://api.openai.com/v1',
+      aiModel: isLocal ? 'deepseek-v4-flash' : 'gpt-4o-mini',
+      aiKey: '', aiKeyMode: 'session',
       apiKeyStorageMode: 'session',
       lastOpenedBookId: null, lastView: 'bookshelf'
     };
     await DB.settings.put(s);
-  } else if (s.aiBaseUrl === 'https://api.openai.com/v1' && s.aiModel === 'gpt-4o-mini') {
-    // Migrate untouched legacy defaults to the proxied opencode setup.
+  } else if (
+    isLocal &&
+    s.aiBaseUrl === 'https://api.openai.com/v1' && s.aiModel === 'gpt-4o-mini'
+  ) {
+    // Only on the local proxy host: migrate untouched legacy defaults to the
+    // proxied opencode setup. On static hosting the OpenAI default is correct.
     s.aiBaseUrl = '/api/zen/go/v1';
     s.aiModel = 'deepseek-v4-flash';
     await DB.settings.put(s);

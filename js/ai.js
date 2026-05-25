@@ -1,12 +1,19 @@
 /* E-Story AI Module — BYOK + Demo Mode */
 /* v2: No-spoiler, JSON recovery, error classification, cache */
 
+// Only the local serve.py exposes the /api/zen proxy. On static hosting
+// (e.g. GitHub Pages) the relative path 404s, so default to a direct
+// OpenAI-compatible endpoint that the user configures with their own key.
+const AI_IS_LOCAL = ['localhost', '127.0.0.1'].includes(location.hostname);
+const AI_DEFAULT_URL = AI_IS_LOCAL ? '/api/zen/go/v1' : 'https://api.openai.com/v1';
+const AI_DEFAULT_MODEL = AI_IS_LOCAL ? 'deepseek-v4-flash' : 'gpt-4o-mini';
+
 const AI = {
   _key: '',
-  // Relative URL => routed through the same-origin proxy in serve.py, which
-  // injects the key server-side. Avoids CORS (opencode.ai sends no CORS headers).
-  _baseUrl: '/api/zen/go/v1',
-  _model: 'deepseek-v4-flash',
+  // Local: same-origin proxy (serve.py injects the key, avoids CORS).
+  // Hosted: a direct endpoint the user sets in Settings (BYOK).
+  _baseUrl: AI_DEFAULT_URL,
+  _model: AI_DEFAULT_MODEL,
   _mode: 'demo',
   _storageMode: 'session',
 
@@ -32,8 +39,8 @@ const AI = {
   },
 
   async init() {
-    this._baseUrl = '/api/zen/go/v1';
-    this._model = 'deepseek-v4-flash';
+    this._baseUrl = AI_DEFAULT_URL;
+    this._model = AI_DEFAULT_MODEL;
     this._key = '';
     this._mode = 'demo';
     this._readingContext = { bookTitle: '', chunkIndex: 0, totalChunks: 0 };

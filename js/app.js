@@ -78,6 +78,29 @@ let App = {
       if (e.target.dataset.action === 'renderVocab') this.renderVocabulary();
     });
     
+    // Quick-menu actions — one delegated listener (menu element persists,
+    // so binding here avoids stacking a new listener on every sentence click).
+    $('quick-menu')?.addEventListener('click', (e) => {
+      const wordEl = e.target.closest('.qm-word');
+      if (wordEl) {
+        e.stopPropagation();
+        document.querySelectorAll('.qm-word').forEach(w => w.classList.remove('selected'));
+        wordEl.classList.add('selected');
+        this.selectedWord = wordEl.dataset.word;
+        this.wordHint(wordEl.dataset.word);
+        return;
+      }
+      const action = e.target.closest('.qm-btn')?.dataset.action;
+      const handlers = {
+        word: () => this.wordHint(),
+        grammar: () => this.grammarHint(),
+        gist: () => this.sentenceGist(),
+        study: () => this.openStudy(),
+        queue: () => this.queueLater()
+      };
+      handlers[action]?.();
+    });
+
     // Close study panel
     $('study-close')?.addEventListener('click', () => this.closeStudy());
     
@@ -471,18 +494,6 @@ let App = {
       return `<span class="qm-word word-chip" data-word="${clean}">${clean}</span>`;
     }).join('');
     
-    // Quick menu action handler — delegated (Bug 3: replace inline onclick)
-    menu.addEventListener('click', (e) => {
-      const btn = e.target.closest('.qm-btn');
-      if (!btn) return;
-      const action = btn.dataset.action;
-      if (action === 'word') this.wordHint();
-      else if (action === 'grammar') this.grammarHint();
-      else if (action === 'gist') this.sentenceGist();
-      else if (action === 'study') this.openStudy();
-      else if (action === 'queue') this.queueLater();
-    });
-    
     menu.innerHTML = `
       <div class="qm-sentence">${escapeHtml(text)}</div>
       <div class="qm-words-wrap">${wordHtml}</div>
@@ -495,17 +506,6 @@ let App = {
       </div>
       <div id="hint-result" class="qm-hint-result"></div>
     `;
-    
-    // Click on a word token to select it (CSS hover via .qm-word:hover)
-    menu.querySelectorAll('.qm-word').forEach(el => {
-      el.addEventListener('click', (e) => {
-        e.stopPropagation();
-        menu.querySelectorAll('.qm-word').forEach(w => w.classList.remove('selected'));
-        el.classList.add('selected');
-        this.selectedWord = el.dataset.word;
-        this.wordHint(el.dataset.word);
-      });
-    });
     
     menu.classList.add('open');
     if (rect) {

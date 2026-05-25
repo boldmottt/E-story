@@ -76,6 +76,10 @@ let App = {
       if (e.target.dataset.action === 'renderVocab') this.renderVocabulary();
     });
     
+    // URL import
+    $('url-load-btn')?.addEventListener('click', () => this.loadBookFromUrl());
+    $('url-input')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') this.loadBookFromUrl(); });
+    
     // Close study panel
     $('study-close')?.addEventListener('click', () => this.closeStudy());
     
@@ -187,6 +191,7 @@ let App = {
     const grid = $('bookshelf-grid');
     
     let html = '<div class="upload-area" id="upload-area"><div class="upload-icon">📂</div><div class="upload-label">txt 파일을 업로드하세요</div><div class="upload-hint">또는 여기로 드래그 & 드롭</div><input type="file" id="file-input" accept=".txt" class="hidden-input"></div>';
+    html += '<div class="url-import"><input type="text" id="url-input" placeholder="또는 URL 직접 입력 (맥: python3 serve_books.py)" class="url-field"><button class="btn-s" id="url-load-btn">📥 불러오기</button></div>';
     
     books.forEach(book => {
       const pct = book.totalChunks > 0 ? Math.round((book.currentChunk / book.totalChunks) * 100) : 0;
@@ -218,6 +223,37 @@ let App = {
     this.showToast(`"${file.name}" 추가 완료!`, 'success');
     await this.loadBookshelf();
     Sync.scheduleSync();
+  },
+
+  async loadBookFromUrl() {
+    const input = $('url-input');
+    let url = input.value.trim();
+    if (!url) { this.showToast('URL을 입력해주세요.', 'error'); return; }
+    
+    // Auto-prepend http:// if missing
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'http://' + url;
+      input.value = url;
+    }
+    
+    this.showToast('📥 책 다운로드 중...', 'info');
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const text = await res.text();
+      if (text.length < 100) throw new Error('파일이 너무 작습니다');
+      
+      // Create a virtual File object
+      const fileName = url.split('/').pop() || 'book.txt';
+      const file = new File([text], fileName, { type: 'text/plain' });
+      const id = await addBook(file, text);
+      this.showToast(`✅ "${fileName}" 추가 완료!`, 'success');
+      input.value = '';
+      await this.loadBookshelf();
+      Sync.scheduleSync();
+    } catch(e) {
+      this.showToast('❌ 불러오기 실패: ' + e.message, 'error');
+    }
   },
 
   /* ===== Reader ===== */

@@ -35,6 +35,8 @@ let App = {
     // Upload & bookshelf-grid delegation (single listener)
     const grid = $('bookshelf-grid');
     grid.addEventListener('click', (e) => {
+      const delBtn = e.target.closest('.book-del');
+      if (delBtn) { this.deleteBookConfirm(parseInt(delBtn.dataset.id)); return; }
       const card = e.target.closest('.book-card');
       if (card) { this.openBook(parseInt(card.dataset.id)); return; }
       if (e.target.closest('#upload-area')) {
@@ -187,11 +189,12 @@ let App = {
     const grid = $('bookshelf-grid');
     
     let html = '<div class="upload-area" id="upload-area"><div class="upload-icon">📂</div><div class="upload-label">txt 파일을 업로드하세요</div><div class="upload-hint">또는 여기로 드래그 & 드롭</div><input type="file" id="file-input" accept=".txt" class="hidden-input"></div>';
-    html += '<div class="url-import"><input type="text" id="url-input" placeholder="또는 URL 직접 입력 (맥: python3 serve_books.py)" class="url-field"><button class="btn-s" id="url-load-btn">📥 불러오기</button></div>';
-    
+    html += '<div class="url-import"><input type="text" id="url-input" placeholder="또는 URL 직접 입력 (맥: python3 serve.py)" class="url-field"><button class="btn-s" id="url-load-btn">📥 불러오기</button></div>';
+
     books.forEach(book => {
       const pct = book.totalChunks > 0 ? Math.round((book.currentChunk / book.totalChunks) * 100) : 0;
       html += `<div class="book-card" data-id="${book.id}">
+        <button class="book-del" data-action="delete" data-id="${book.id}" title="책 삭제" aria-label="책 삭제">✕</button>
         <div class="title">${escapeHtml(book.title)}</div>
         <div class="author">${escapeHtml(book.fileName)}</div>
         <div class="progress"><div class="progress-fill" style="width:${pct}%"></div></div>
@@ -206,6 +209,21 @@ let App = {
     $('url-input')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') this.loadBookFromUrl(); });
     
     this.updateQueueBadge();
+  },
+
+  async deleteBookConfirm(bookId) {
+    const book = await getBook(bookId);
+    if (!book) return;
+    if (!confirm(`"${book.title}"을(를) 삭제할까요?\n진도·단어장·피드백 기록도 함께 삭제됩니다.`)) return;
+
+    await deleteBook(bookId);
+    if (this.currentBook?.id === bookId) this.currentBook = null;
+    const s = await getSettings();
+    if (s.lastOpenedBookId === bookId) await this._patchSettings({ lastOpenedBookId: null });
+
+    this.showToast(`"${book.title}" 삭제됨`, 'success');
+    await this.loadBookshelf();
+    Sync.scheduleSync();
   },
 
   async handleUpload(e) {
@@ -231,21 +249,11 @@ let App = {
     let url = input.value.trim();
     if (!url) { this.showToast('URL을 입력해주세요.', 'error'); return; }
     
-    // Smart URL fixup
-    // "8000/path" → "http://localhost:8000/path"
-    if (/^\d+[\/:]/.test(url)) {
-      url = 'http://localhost:' + url.replace(/^(\d+)[:\/]/, '$1/');
-    }
-    // "localhost:8000/path" → "http://localhost:8000/path"
-    else if (/^localhost:\d/.test(url)) {
-      url = 'http://' + url;
-    }
-    // "192.168.x.x:8000/path" → "http://192.168.x.x:8000/path"
-    else if (/^\d+\.\d+\.\d+\.\d+:\d/.test(url)) {
-      url = 'http://' + url;
-    }
-    // Bare path with no protocol at all
-    else if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    // Smart URL fixup. "8000/path" => localhost:8000/path; anything else
+    // missing a protocol just gets http:// prefixed.
+    if (/^\d+[:/]/.test(url)) {
+      url = 'http://localhost:' + url.replace(/^(\d+)[:/]/, '$1/');
+    } else if (!/^https?:\/\//.test(url)) {
       url = 'http://' + url;
     }
     input.value = url;
@@ -269,7 +277,7 @@ let App = {
       // User-friendly error messages
       let msg = e.message;
       if (e.message.includes('Failed to fetch') || e.message.includes('TypeError')) {
-        msg = '서버에 연결할 수 없습니다. URL이 정확한지, 서버가 실행 중인지 확인해주세요. (맥: python3 serve_books.py)';
+        msg = '서버에 연결할 수 없습니다. URL이 정확한지, 서버가 실행 중인지 확인해주세요. (맥: python3 serve.py)';
       }
       this.showToast('❌ 불러오기 실패: ' + msg, 'error');
     }

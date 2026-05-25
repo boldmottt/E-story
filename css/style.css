@@ -124,6 +124,9 @@ code{font-family:var(--font-mono);font-size:.85em;background:var(--bg4);padding:
 .book-card .progress{height:4px;background:var(--bg);border-radius:2px;overflow:hidden;margin-bottom:8px}
 .book-card .progress-fill{height:100%;background:var(--a0);border-radius:2px;transition:width .5s ease}
 .book-card .meta{font-size:var(--t-meta);color:var(--tx3);display:flex;justify-content:space-between;font-variant-numeric:tabular-nums}
+.book-del{position:absolute;top:8px;right:8px;width:26px;height:26px;border:none;border-radius:50%;background:var(--bg4);color:var(--tx3);font-size:13px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:0;transition:var(--t)}
+.book-card:hover .book-del{opacity:1}
+.book-del:hover{background:var(--a3);color:var(--on-accent)}
 .upload-area{grid-column:1/-1;border:2px dashed var(--bd2);border-radius:var(--r-md);padding:48px;text-align:center;cursor:pointer;transition:var(--t);color:var(--tx3);background:var(--bg3)}
 .upload-area:hover{border-color:var(--a0);color:var(--a0);background:var(--bg4)}
 .upload-area input{display:none}
@@ -302,6 +305,7 @@ code{font-family:var(--font-mono);font-size:.85em;background:var(--bg4);padding:
   .topbar{padding:8px 16px;height:52px;min-height:52px}
   .content{padding:16px}
   .bookshelf{grid-template-columns:1fr}
+  .book-del{opacity:.85;width:32px;height:32px}
   .upload-area{padding:36px 16px}
   .reader-wrap{padding:16px 0 80px;font-size:1.0625rem}
   .ch-nav-btn{font-size:var(--t-sm);padding:7px 12px}

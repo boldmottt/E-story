@@ -231,11 +231,24 @@ let App = {
     let url = input.value.trim();
     if (!url) { this.showToast('URL을 입력해주세요.', 'error'); return; }
     
-    // Auto-prepend http:// if missing
-    if (!url.startsWith('http://') && !url.startsWith('https://')) {
-      url = 'http://' + url;
-      input.value = url;
+    // Smart URL fixup
+    // "8000/path" → "http://localhost:8000/path"
+    if (/^\d+[\/:]/.test(url)) {
+      url = 'http://localhost:' + url.replace(/^(\d+)[:\/]/, '$1/');
     }
+    // "localhost:8000/path" → "http://localhost:8000/path"
+    else if (/^localhost:\d/.test(url)) {
+      url = 'http://' + url;
+    }
+    // "192.168.x.x:8000/path" → "http://192.168.x.x:8000/path"
+    else if (/^\d+\.\d+\.\d+\.\d+:\d/.test(url)) {
+      url = 'http://' + url;
+    }
+    // Bare path with no protocol at all
+    else if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'http://' + url;
+    }
+    input.value = url;
     
     this.showToast('📥 책 다운로드 중...', 'info');
     try {
@@ -245,7 +258,7 @@ let App = {
       if (text.length < 100) throw new Error('파일이 너무 작습니다');
       
       // Create a virtual File object
-      const fileName = url.split('/').pop() || 'book.txt';
+      const fileName = decodeURIComponent(url.split('/').pop() || 'book.txt');
       const file = new File([text], fileName, { type: 'text/plain' });
       const id = await addBook(file, text);
       this.showToast(`✅ "${fileName}" 추가 완료!`, 'success');
@@ -253,7 +266,12 @@ let App = {
       await this.loadBookshelf();
       Sync.scheduleSync();
     } catch(e) {
-      this.showToast('❌ 불러오기 실패: ' + e.message, 'error');
+      // User-friendly error messages
+      let msg = e.message;
+      if (e.message.includes('Failed to fetch') || e.message.includes('TypeError')) {
+        msg = '서버에 연결할 수 없습니다. URL이 정확한지, 서버가 실행 중인지 확인해주세요. (맥: python3 serve_books.py)';
+      }
+      this.showToast('❌ 불러오기 실패: ' + msg, 'error');
     }
   },
 

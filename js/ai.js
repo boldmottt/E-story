@@ -33,9 +33,10 @@ const AI = {
 - Do NOT use your training knowledge of famous books to answer questions about future events.
 - When in doubt, err on the side of NOT revealing information.`,
 
-  /** True when calls go through the same-origin proxy (which holds the key). */
+  /** True when calls go through a proxy that injects the key server-side
+   *  (same-origin serve.py via relative path, or a Cloudflare Worker). */
   _isProxied() {
-    return this._baseUrl.startsWith('/');
+    return this._baseUrl.startsWith('/') || this._baseUrl.includes('.workers.dev');
   },
 
   async init() {

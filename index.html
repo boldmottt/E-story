@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,500;0,7..72,600;1,7..72,400;1,7..72,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=1.5">
+<link rel="stylesheet" href="css/style.css?v=1.6">
 </head>
 <body>
 
@@ -120,7 +120,7 @@
           <option value="persist">브라우저에 저장</option>
         </select>
       </div>
-      <div class="settings-note">기본값(<code>/api/zen/go/v1</code>)은 serve.py 프록시를 통해 동작하며 키는 서버의 <code>OPENCODE_API_KEY</code>가 사용됩니다 — 여기에 키를 입력할 필요가 없습니다. 직접 다른 OpenAI 호환 API를 쓰려면 전체 URL과 키를 입력하세요. 정적 호스팅(프록시 없음)에서는 키 미입력 시 데모 모드로 동작합니다.</div>
+      <div class="settings-note">• <b>로컬(serve.py)</b>: 기본값 <code>/api/zen/go/v1</code>로 자동 동작, 키 입력 불필요(서버 <code>OPENCODE_API_KEY</code> 사용).<br>• <b>GitHub Pages 등 정적 호스팅</b>: Cloudflare Worker 프록시를 배포하고(<code>cloudflare-worker/</code> 참고) URL을 <code>https://&lt;워커&gt;.workers.dev/api/zen/go/v1</code>로 지정하면 키 없이 동작.<br>• 직접 OpenAI 호환 API를 쓰려면 전체 URL + 본인 키를 입력하세요. 키 없고 프록시도 없으면 데모 모드.</div>
     </div>
 
     <div class="settings-group">
@@ -202,12 +202,12 @@
 </div>
 
 <!-- ===== Scripts (cache-busting: bump v=1.1 on deploy to force fresh files) ===== -->
-<script src="vendor/dexie.js?v=1.5"></script>
-<script src="js/db.js?v=1.5"></script>
-<script src="js/ai.js?v=1.5"></script>
-<script src="js/tts.js?v=1.5"></script>
-<script src="js/sync.js?v=1.5"></script>
-<script src="js/app.js?v=1.5"></script>
+<script src="vendor/dexie.js?v=1.6"></script>
+<script src="js/db.js?v=1.6"></script>
+<script src="js/ai.js?v=1.6"></script>
+<script src="js/tts.js?v=1.6"></script>
+<script src="js/sync.js?v=1.6"></script>
+<script src="js/app.js?v=1.6"></script>
 
 </body>
 </html>

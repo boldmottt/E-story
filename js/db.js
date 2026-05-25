@@ -287,6 +287,13 @@ async function getSettings() {
     s.aiBaseUrl = '/api/zen/go/v1';
     s.aiModel = 'deepseek-v4-flash';
     await DB.settings.put(s);
+  } else if (!isLocal && s.aiBaseUrl?.startsWith('/')) {
+    // Static hosting has no same-origin proxy, so a stored relative path would
+    // always fail. Reset to the OpenAI-compatible default (user then sets their
+    // own key, or a Cloudflare Worker URL — see cloudflare-worker/).
+    s.aiBaseUrl = 'https://api.openai.com/v1';
+    s.aiModel = 'gpt-4o-mini';
+    await DB.settings.put(s);
   }
   return s;
 }

@@ -1139,7 +1139,7 @@ let App = {
   async testAI() {
     const url = $('settings-url').value.trim();
     const key = $('settings-key').value.trim();
-    const proxied = url.startsWith('/');
+    const proxied = url.startsWith('/') || url.includes('.workers.dev');
 
     // A browser key is only required when calling an upstream directly.
     if (!proxied && !key) {

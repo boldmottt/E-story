@@ -1,9 +1,9 @@
-# E-Story — 기획서 (PRD) v1.2
+# E-Story — 기획서 (PRD) v1.5
 
 > **목표:** "이야기는 계속 읽고, 막히는 영어만 AI와 함께 공부하는 원서 리더"
 > **슬로건:** Story-first, Study-on-demand
 > **위치:** `./E-Story/`
-> **버전:** v1.2 (2026-05-25)
+> **버전:** v1.5 (2026-05-25)
 
 ---
 
@@ -150,9 +150,14 @@ If the answer requires future context, say: "현재까지의 내용만으로는 
 
 ### 4.1 배포 방식
 ```
-권장: python3 -m http.server 8000
+로컬(AI 포함): export OPENCODE_API_KEY=sk-... && python3 serve.py 8000
+정적 호스팅:   GitHub Pages 등 (AI는 설정에서 BYOK 키 입력 필요)
 ⚠ file:// 실행 시 브라우저별 제약 있음
 ```
+- `serve.py`는 정적 앱 서빙 + `/api/zen/*` → `opencode.ai/zen/*` 프록시(키 서버 주입).
+  opencode.ai가 CORS 헤더를 주지 않아 브라우저 직접 호출 불가 → 프록시 필요.
+- AI 기본값은 호스트로 자동 분기: `localhost`/`127.0.0.1`이면 프록시
+  (`/api/zen/go/v1`, `deepseek-v4-flash`), 그 외는 OpenAI 호환 BYOK 기본값.
 
 ### 4.2 AI 응답 JSON 형식 (Study Mode)
 
@@ -186,6 +191,11 @@ If the answer requires future context, say: "현재까지의 내용만으로는 
 - API 키 세션 전용 저장 기본값 (안전)
 - AI 피드백 + 사전 검색에 사용
 - No-spoiler 규칙 프롬프트에 포함
+- 로컬 프록시(serve.py) 사용 시 키는 서버 `OPENCODE_API_KEY`가 들고 브라우저엔 미노출
+
+### 4.4 동기화 (현재 비활성)
+- Supabase 동기화는 현재 **비활성**(`js/sync.config.js`의 `ENABLED:false`, `sync.js`는 no-op).
+- 모든 데이터는 브라우저 IndexedDB에 로컬 저장(Local-first). 백업은 JSON 내보내기/가져오기.
 
 ---
 
@@ -335,3 +345,4 @@ If the answer requires future context, say: "현재까지의 내용만으로는 
 | v1.0 | 2026-05-25 | 초안 |
 | v1.1 | 2026-05-25 | MVP 축소, Local-first 정정, JSON 형식, 데이터 모델 통합 |
 | v1.2 | 2026-05-25 | **Story-first 방향 전환**. Story/Study/Review 모드 분리. 힌트 사다리. Study Queue. No-spoiler 규칙. 구조+자연 해석 분리. Story Buddy. 장면 기반 단어장. Previously on. |
+| v1.5 | 2026-05-25 | serve.py AI 프록시(CORS 해결)+호스트별 baseUrl 분기. 에디토리얼 페이퍼 UI(Literata serif, 문단 보존 리더). 책 삭제. URL 임포트+CORS 안내. Supabase 동기화 비활성. Dexie 로컬 호스팅. quick-menu 리스너 누수 수정. |

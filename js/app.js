@@ -212,7 +212,7 @@ let App = {
     const grid = $('bookshelf-grid');
     
     let html = '<div class="upload-area" id="upload-area"><div class="upload-icon">📂</div><div class="upload-label">txt 파일을 업로드하세요</div><div class="upload-hint">또는 여기로 드래그 & 드롭</div><input type="file" id="file-input" accept=".txt" class="hidden-input"></div>';
-    html += '<div class="url-import"><input type="text" id="url-input" placeholder="또는 URL 직접 입력 (맥: python3 serve.py)" class="url-field"><button class="btn-s" id="url-load-btn">📥 불러오기</button></div>';
+    html += '<div class="url-import"><input type="text" id="url-input" placeholder="또는 CORS 허용된 URL / 로컬 서버 주소 (맥: python3 serve.py)" class="url-field"><button class="btn-s" id="url-load-btn">📥 불러오기</button></div>';
 
     books.forEach(book => {
       const pct = book.totalChunks > 0 ? Math.round((book.currentChunk / book.totalChunks) * 100) : 0;
@@ -297,10 +297,12 @@ let App = {
       await this.loadBookshelf();
       Sync.scheduleSync();
     } catch(e) {
-      // User-friendly error messages
+      // A network/CORS failure surfaces as a TypeError ("Failed to fetch").
+      // Most public sites (Project Gutenberg 포함) send no CORS headers, so a
+      // browser fetch is blocked — tell the user to download then upload.
       let msg = e.message;
-      if (e.message.includes('Failed to fetch') || e.message.includes('TypeError')) {
-        msg = '서버에 연결할 수 없습니다. URL이 정확한지, 서버가 실행 중인지 확인해주세요. (맥: python3 serve.py)';
+      if (e.message.includes('Failed to fetch') || e.name === 'TypeError') {
+        msg = '이 URL은 브라우저 보안 정책(CORS)으로 직접 받을 수 없거나 서버가 꺼져 있습니다. 파일을 PC에 내려받아 업로드하거나, 로컬 서버(맥: python3 serve.py)를 사용해주세요.';
       }
       this.showToast('❌ 불러오기 실패: ' + msg, 'error');
     }

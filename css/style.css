@@ -95,6 +95,8 @@ code{font-family:var(--font-mono);font-size:.85em;background:var(--bg4);padding:
 .qm-word.selected{background:var(--a0);color:var(--on-accent)}
 .qm-words-wrap{margin-bottom:8px;padding:8px;background:var(--bg4);border-radius:var(--r-sm);line-height:1.9}
 .qm-hint-result{margin-top:8px;padding:10px;border-radius:var(--r-sm);background:var(--bg4);font-size:var(--t-sm);color:var(--tx2);line-height:1.55;display:none}
+.qm-vocab-add{display:inline-block;margin-left:6px;padding:3px 9px;border:1px solid var(--bd2);border-radius:999px;background:var(--bg3);color:var(--a0);font-size:var(--t-meta);font-weight:600;font-family:var(--font);cursor:pointer;transition:var(--t)}
+.qm-vocab-add:hover{background:var(--a0);color:var(--on-accent);border-color:var(--a0)}
 .vocab-select-word{padding:6px 12px;border:1px solid var(--bd);border-radius:var(--r-sm);background:var(--bg3);color:var(--tx);font-size:var(--t-sm);cursor:pointer;font-family:var(--font);transition:var(--t)}
 .vocab-select-word:hover{background:var(--bg4);border-color:var(--a0);color:var(--a0)}
 .vocab-select-desc{font-size:var(--t-sm);color:var(--tx2);margin-bottom:12px}

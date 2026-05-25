@@ -81,6 +81,12 @@ let App = {
     // Quick-menu actions — one delegated listener (menu element persists,
     // so binding here avoids stacking a new listener on every sentence click).
     $('quick-menu')?.addEventListener('click', (e) => {
+      const vocabBtn = e.target.closest('.qm-vocab-add');
+      if (vocabBtn) {
+        e.stopPropagation();
+        this.saveWordDirect(vocabBtn.dataset.word, vocabBtn.dataset.meaning);
+        return;
+      }
       const wordEl = e.target.closest('.qm-word');
       if (wordEl) {
         e.stopPropagation();
@@ -533,7 +539,15 @@ let App = {
     result.style.display = 'block';
     result.textContent = '단어 뜻 불러오는 중...';
     const hint = await AI.wordHint(word, this.selectedSentence.text);
-    result.innerHTML = `<b>${escapeHtml(word)}</b>: ${escapeHtml(hint.meaningKo || '데이터를 불러오는 중입니다')} <span style="color:var(--tx3)">(${escapeHtml(hint.partOfSpeech || '')})</span>`;
+    const meaning = hint.meaningKo || '';
+    result.innerHTML = `<b>${escapeHtml(word)}</b>: ${escapeHtml(meaning || '데이터를 불러오는 중입니다')} <span style="color:var(--tx3)">(${escapeHtml(hint.partOfSpeech || '')})</span>`
+      + ` <button class="qm-vocab-add" data-word="${escapeHtml(word)}" data-meaning="${escapeHtml(meaning)}">➕ 단어장</button>`;
+  },
+
+  async saveWordDirect(word, meaning) {
+    if (!word) return;
+    await addWord(word, meaning || '', this.selectedSentence?.text || '', this.currentBook?.id, this.selectedSentence?.index, '');
+    this.showToast(`"${word}" 단어장에 추가됨!`, 'success');
   },
 
   async grammarHint() {

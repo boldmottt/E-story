@@ -101,6 +101,7 @@ let App = {
         word: () => this.wordHint(),
         grammar: () => this.grammarHint(),
         gist: () => this.sentenceGist(),
+        structure: () => this.openStructure(),
         study: () => this.openStudy(),
         queue: () => this.queueLater()
       };
@@ -508,6 +509,7 @@ let App = {
       <div class="qm-actions">
         <button class="qm-btn word" data-action="word">📖 단어 힌트</button>
         <button class="qm-btn grammar" data-action="grammar">🔍 구문 힌트</button>
+        <button class="qm-btn structure" data-action="structure">🏷️ 구조 분석</button>
         <button class="qm-btn gist" data-action="gist">📋 문장 요지</button>
         <button class="qm-btn study" data-action="study">✍️ 해석해보기</button>
         <button class="qm-btn queue" data-action="queue">⏰ 나중에</button>
@@ -572,6 +574,98 @@ let App = {
       return;
     }
     result.textContent = `📋 ${data.gistKo}`;
+  },
+
+  // ── 구조 분석 훈련 (능동 태깅) ──
+  _STRUCT_ROLES: ['주어', '동사', '목적어', '보어', '수식어', '기능어'],
+
+  openStructure() {
+    this.closeQuickMenu();
+    const sentence = this.selectedSentence?.text;
+    if (!sentence) return;
+    const tokens = sentence.split(/\s+/).filter(Boolean);
+    this._structUser = {};   // tokenIndex -> roleIndex
+    this._structActive = 0;  // active role index
+
+    const roles = this._STRUCT_ROLES;
+    const palette = roles.map((r, ri) =>
+      `<button class="struct-role r${ri}${ri === 0 ? ' active' : ''}" data-role="${ri}">${r}</button>`).join('');
+    const toks = tokens.map((t, i) =>
+      `<span class="struct-tok" data-i="${i}">${escapeHtml(t)}</span>`).join(' ');
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay open';
+    overlay.id = 'structure-modal';
+    overlay.innerHTML = `
+      <div class="modal struct-modal">
+        <h2>🏷️ 구조 분석</h2>
+        <p class="struct-help">역할을 고른 뒤 단어를 눌러 라벨링하세요. 같은 단어를 다시 누르면 해제됩니다.</p>
+        <div class="struct-palette">${palette}</div>
+        <div class="struct-tokens">${toks}</div>
+        <div class="struct-result" id="struct-result"></div>
+        <div class="modal-actions">
+          <button class="btn-s" id="struct-cancel">닫기</button>
+          <button class="btn" id="struct-submit">채점</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    overlay.querySelectorAll('.struct-role').forEach(b => {
+      b.addEventListener('click', () => {
+        this._structActive = parseInt(b.dataset.role);
+        overlay.querySelectorAll('.struct-role').forEach(x => x.classList.remove('active'));
+        b.classList.add('active');
+      });
+    });
+    overlay.querySelectorAll('.struct-tok').forEach(tok => {
+      tok.addEventListener('click', () => {
+        const i = parseInt(tok.dataset.i);
+        if (this._structUser[i] === this._structActive) {
+          delete this._structUser[i];
+          tok.className = 'struct-tok';
+        } else {
+          this._structUser[i] = this._structActive;
+          tok.className = 'struct-tok r' + this._structActive;
+        }
+      });
+    });
+    overlay.querySelector('#struct-cancel').addEventListener('click', () => overlay.remove());
+    overlay.querySelector('#struct-submit').addEventListener('click', () => this._gradeStructure(sentence, overlay));
+  },
+
+  async _gradeStructure(sentence, overlay) {
+    const res = overlay.querySelector('#struct-result');
+    const submitBtn = overlay.querySelector('#struct-submit');
+    res.innerHTML = '🔍 채점 중...';
+    submitBtn.disabled = true;
+
+    const data = await AI.analyzeStructure(sentence);
+    submitBtn.disabled = false;
+    if (!data || data.error) {
+      res.innerHTML = '⚠️ 분석 실패 — 잠시 후 다시 시도해주세요.';
+      return;
+    }
+
+    const roles = this._STRUCT_ROLES;
+    const correctIdx = data.roles.map(r => roles.indexOf(r));
+    let hit = 0, labeled = 0;
+    overlay.querySelectorAll('.struct-tok').forEach((el, i) => {
+      const correct = correctIdx[i];
+      el.className = 'struct-tok' + (correct >= 0 ? ' r' + correct : '');
+      const userRole = this._structUser[i];
+      if (userRole !== undefined) {
+        labeled++;
+        if (userRole === correct) { el.classList.add('ok'); hit++; }
+        else el.classList.add('miss');
+      }
+    });
+    const score = labeled ? Math.round((hit / labeled) * 100) : 0;
+    const legend = roles.map((r, ri) => `<span class="struct-legend r${ri}">${r}</span>`).join('');
+    res.innerHTML = `
+      <div class="struct-score">정답률 ${score}% <span class="struct-sub">(${hit}/${labeled})</span></div>
+      <div class="struct-legend-row">${legend}</div>
+      ${data.note ? `<div class="struct-note">💡 ${escapeHtml(data.note)}</div>` : ''}
+      <div class="struct-tip">색 = 정답 역할 · 초록 ✓ 정답 · 빨강 ✗ 오답</div>`;
   },
 
   async openStudy() {

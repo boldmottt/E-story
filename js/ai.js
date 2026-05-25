@@ -130,7 +130,7 @@ const AI = {
   },
 
   /** Core API call with No-spoiler, JSON recovery, error classification */
-  async _call(messages, taskInstructions, jsonMode = true) {
+  async _call(messages, taskInstructions, jsonMode = true, maxTokens = 4000) {
     // Proxied mode holds the key server-side, so a browser key isn't required.
     if (!this._isProxied() && (this._mode !== 'real' || !this._key)) {
       window.dispatchEvent(new CustomEvent('ai:demo-fallback', { detail: { message: 'API 키가 설정되지 않음', code: 'no_key' } }));
@@ -150,7 +150,7 @@ const AI = {
         // on hidden reasoning before emitting content. Too low a cap => empty
         // content (finish_reason "length"). 4000 leaves room for both.
         model: this._model, messages: fullMessages,
-        max_tokens: 4000, temperature: 0.3, stream: false
+        max_tokens: maxTokens, temperature: 0.3, stream: false
       };
       if (jsonMode) body.response_format = { type: 'json_object' };
 
@@ -266,6 +266,25 @@ const AI = {
       ], '이 영어 문장을 한국어로 두 가지로 번역하라. 사용자의 번역과 무관하게 원문만 보고 새로 작성한다. literalTranslationKo = 어순·구문을 살린 직역. naturalTranslationKo = 한국어답게 매끄러운 의역. 두 번역은 반드시 서로 달라야 한다(같은 문장 반복 금지). storyNoteKo = 이 문장의 뉘앙스·장면 의미 한 줄. NO spoilers.');
       if (r && !r.error) return r;
       return { error: true };
+    });
+  },
+
+  /** Label each whitespace token of an English sentence with a grammar role.
+   *  Returns { tokens, roles[], note } aligned by index. Reasoning models burn
+   *  a large hidden budget here, so a high max_tokens is required. */
+  async analyzeStructure(sentence) {
+    const tokens = sentence.split(/\s+/).filter(Boolean);
+    const key = this._cacheKey('as', sentence);
+    return this._cached(key, async () => {
+      const numbered = tokens.map((t, i) => `${i}: ${t}`).join('\n');
+      const r = await this._call([
+        { role: 'system', content: `Return JSON: { "roles": [정확히 ${tokens.length}개 문자열], "note": "..." }` },
+        { role: 'user', content: numbered }
+      ], `위 영어 문장의 각 토큰(인덱스 0..${tokens.length - 1})에 문법 역할을 하나씩 부여하라. 역할은 정확히 다음 중 하나: 주어, 동사, 목적어, 보어, 수식어, 기능어. (기능어 = 관사·전치사·접속사·구두점 등). roles 배열 길이는 반드시 ${tokens.length}개이며 인덱스 순서대로. note는 문장 구조 핵심을 한국어 한 줄로.`, true, 8000);
+      if (r && !r.error && Array.isArray(r.roles) && r.roles.length === tokens.length) {
+        return { tokens, roles: r.roles, note: r.note || '' };
+      }
+      return { error: true, tokens };
     });
   },
 

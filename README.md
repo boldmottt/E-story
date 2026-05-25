@@ -28,7 +28,7 @@ open http://localhost:8000
 - Vanilla JS + CSS (단일 HTML, 번들러 불필요)
 - IndexedDB (Dexie.js) — 로컬 데이터 저장
 - Web Speech API — TTS
-- Free Dictionary API — 단어 검색
+- AI 기반 단어 뜻 검색 — BYOK AI
 - BYOK (Bring Your Own Key) — AI 피드백
 
 ## 라이선스

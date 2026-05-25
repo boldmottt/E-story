@@ -11,6 +11,7 @@ let App = {
   selectedSentence: null,
   selectedWord: null,
   bookData: null,
+  readerMode: 'story', // story | tts (reader sub-mode)
   feedbackAttempts: [],
   mode: 'story', // story | study | review
   queueCount: 0,
@@ -110,14 +111,6 @@ let App = {
     updateBookProgress(this.currentBook.id, this.currentSelectedChunkIndex, offset);
   },
 
-  async _loadScript(src) {
-    return new Promise((resolve, reject) => {
-      const s = document.createElement('script');
-      s.src = src; s.onload = resolve; s.onerror = reject;
-      document.head.appendChild(s);
-    });
-  },
-
   switchView(view) {
     this.currentView = view;
     document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.view === view));
@@ -158,7 +151,7 @@ let App = {
     const uploadDiv = document.createElement('div');
     uploadDiv.className = 'upload-area';
     uploadDiv.id = 'upload-area';
-    uploadDiv.innerHTML = '<div style="font-size:32px;margin-bottom:8px">📂</div><div style="font-size:14px;margin-bottom:4px">txt 파일을 업로드하세요</div><div style="font-size:12px">또는 여기로 드래그 & 드롭</div><input type="file" id="file-input" accept=".txt" style="display:none">';
+    uploadDiv.innerHTML = '<div class="upload-icon">📂</div><div class="upload-label">txt 파일을 업로드하세요</div><div class="upload-hint">또는 여기로 드래그 & 드롭</div><input type="file" id="file-input" accept=".txt" style="display:none">';
     grid.appendChild(uploadDiv);
     
     // Use event delegation instead of per-card listeners (M1)
@@ -255,6 +248,7 @@ let App = {
     this.switchView('reader');
 
     this.renderReader();
+    this.loadChapterSummary();
 
     // Restore scroll position
     if (this.currentBook.currentOffset) {
@@ -282,26 +276,32 @@ let App = {
     `;
     wrap.appendChild(header);
     
+    // Chapter Summary section
+    const csDiv = document.createElement('div');
+    csDiv.id = 'chapter-summary';
+    csDiv.className = 'chapter-summary';
+    csDiv.style.cssText = 'margin-bottom:14px;padding:10px 12px;background:var(--bg3);border-radius:8px;font-size:12px;line-height:1.6;display:none';
+    wrap.appendChild(csDiv);
+    
     // Chapter navigation
     const navDiv = document.createElement('div');
     navDiv.className = 'ch-nav';
-    navDiv.style.cssText = 'display:flex;gap:8px;margin-bottom:14px;align-items:center;';
     const prevBtn = document.createElement('button');
     prevBtn.textContent = '◀ 이전';
-    prevBtn.className = 'topbar-btn';
+    prevBtn.className = 'topbar-btn ch-nav-btn';
     prevBtn.disabled = this.currentSelectedChunkIndex <= 0;
-    prevBtn.style.cssText = `padding:5px 12px;border:1px solid var(--bd);border-radius:6px;background:var(--bg3);color:var(--tx2);font-size:12px;cursor:pointer;${prevBtn.disabled ? 'opacity:0.4;cursor:default' : ''}`;
+    if (prevBtn.disabled) prevBtn.style.opacity = '0.4';
     prevBtn.onclick = () => this.goToChunk(this.currentSelectedChunkIndex - 1);
     
     const chLabel = document.createElement('span');
-    chLabel.style.cssText = 'font-size:12px;color:var(--tx3);flex:1;text-align:center';
+    chLabel.className = 'ch-label';
     chLabel.textContent = `${this.currentSelectedChunkIndex + 1} / ${this.currentChunks.length}`;
     
     const nextBtn = document.createElement('button');
     nextBtn.textContent = '다음 ▶';
-    nextBtn.className = 'topbar-btn';
+    nextBtn.className = 'topbar-btn ch-nav-btn';
     nextBtn.disabled = this.currentSelectedChunkIndex >= this.currentChunks.length - 1;
-    nextBtn.style.cssText = `padding:5px 12px;border:1px solid var(--bd);border-radius:6px;background:var(--bg3);color:var(--tx2);font-size:12px;cursor:pointer;${nextBtn.disabled ? 'opacity:0.4;cursor:default' : ''}`;
+    if (nextBtn.disabled) nextBtn.style.opacity = '0.4';
     nextBtn.onclick = () => this.goToChunk(this.currentSelectedChunkIndex + 1);
     
     navDiv.appendChild(prevBtn);
@@ -311,14 +311,15 @@ let App = {
     
     // Mode selector
     const modes = document.createElement('div');
-    modes.style.cssText = 'display:flex;gap:6px;margin-bottom:14px;';
+    modes.className = 'mode-selector';
     const modeNames = ['story', 'tts'];
     const modeLabels = ['📖 읽기', '🔊 낭독'];
     modeNames.forEach((m, i) => {
       const btn = document.createElement('button');
-      btn.className = `topbar-btn${m === this.mode ? ' active-mode' : ''}`;
+      btn.className = `mode-btn${m === this.readerMode ? ' active-mode' : ''}`;
       btn.textContent = modeLabels[i];
-      btn.style.cssText = `padding:5px 12px;border:1px solid var(--bd);border-radius:6px;background:${m === this.mode ? 'var(--a0)' : 'var(--bg3)'};color:${m === this.mode ? '#000' : 'var(--tx2)'};font-size:12px;cursor:pointer;font-family:var(--font)`;
+      btn.style.background = m === this.readerMode ? 'var(--a0)' : 'var(--bg3)';
+      btn.style.color = m === this.readerMode ? '#000' : 'var(--tx2)';
       btn.onclick = () => this.setReaderMode(m);
       modes.appendChild(btn);
     });
@@ -326,14 +327,14 @@ let App = {
     // TTS controls (hidden by default)
     const ttsBar = document.createElement('div');
     ttsBar.id = 'tts-bar';
-    ttsBar.style.cssText = 'display:none;align-items:center;gap:10px;margin-bottom:14px;padding:10px;background:var(--bg3);border-radius:8px;';
+    ttsBar.className = 'tts-bar';
     ttsBar.innerHTML = `
       <button class="topbar-btn" id="tts-play">▶️</button>
       <button class="topbar-btn" id="tts-pause">⏸️</button>
       <button class="topbar-btn" id="tts-stop">⏹️</button>
-      <span style="font-size:12px;color:var(--tx3)">속도:</span>
+      <span class="tts-label">속도:</span>
       <input type="range" id="tts-rate" min="0.3" max="2.0" step="0.1" value="${TTS._rate}" style="width:80px">
-      <span id="tts-rate-val" style="font-size:12px;color:var(--tx3);min-width:30px">${TTS._rate}x</span>
+      <span id="tts-rate-val" class="tts-val">${TTS._rate}x</span>
     `;
     wrap.appendChild(modes);
     wrap.appendChild(ttsBar);
@@ -404,6 +405,7 @@ let App = {
     getSentences(this.currentChunk.id).then(sents => {
       this.currentSentences = sents;
       this.renderReader();
+      this.loadChapterSummary();
       window.scrollTo({ top: 0, behavior: 'instant' });
     });
     
@@ -412,7 +414,7 @@ let App = {
   },
 
   setReaderMode(mode) {
-    this.mode = mode;
+    this.readerMode = mode;
     $('tts-bar').style.display = mode === 'tts' ? 'flex' : 'none';
   },
 
@@ -433,12 +435,12 @@ let App = {
     const words = text.split(' ').filter(w => w.length > 0);
     const wordHtml = words.map(w => {
       const clean = escapeHtml(w);
-      return `<span class="qm-word" data-word="${clean}" style="cursor:pointer;padding:2px 4px;border-radius:4px;background:var(--bg3);color:var(--tx);font-size:13px;display:inline-block;margin:2px;transition:var(--t)">${clean}</span>`;
+      return `<span class="qm-word word-chip" data-word="${clean}">${clean}</span>`;
     }).join('');
     
     menu.innerHTML = `
       <div class="qm-sentence">${escapeHtml(text)}</div>
-      <div class="qm-words" style="margin-bottom:8px;padding:6px;background:var(--bg);border-radius:6px;line-height:1.8">${wordHtml}</div>
+      <div class="qm-words-wrap">${wordHtml}</div>
       <div class="qm-actions">
         <button class="qm-btn word" onclick="App.wordHint()">📖 단어 힌트</button>
         <button class="qm-btn grammar" onclick="App.grammarHint()">🔍 구문 힌트</button>
@@ -446,7 +448,7 @@ let App = {
         <button class="qm-btn study" onclick="App.openStudy()">✍️ 해석해보기</button>
         <button class="qm-btn queue" onclick="App.queueLater()">⏰ 나중에</button>
       </div>
-      <div id="hint-result" style="margin-top:8px;padding:8px;border-radius:6px;background:var(--bg);font-size:12px;color:var(--tx2);line-height:1.5;display:none"></div>
+      <div id="hint-result" class="qm-hint-result"></div>
     `;
     
     // Click on a word token to select it
@@ -769,8 +771,34 @@ let App = {
       cultural: '문화/시대 배경 설명해줘'
     };
     
-    const data = await AI.storyBuddy(this.selectedSentence.text, questions[type], '');
+    const context = `책: "${this.currentBook?.title || '알 수 없음'}", 챕터: ${this.currentSelectedChunkIndex + 1}/${this.currentChunks.length} (${this.currentChunk?.title || ''})`;
+    const data = await AI.storyBuddy(this.selectedSentence.text, questions[type], context);
     resp.textContent = data.answerKo || '분석 결과를 불러올 수 없습니다.';
+  },
+
+  async loadChapterSummary() {
+    const csDiv = $('chapter-summary');
+    if (!csDiv) return;
+    const text = this.currentChunk?.content || '';
+    if (!text || text.length < 50) { csDiv.style.display = 'none'; return; }
+    csDiv.style.display = 'block';
+    csDiv.innerHTML = '🔄 요약 불러오는 중...';
+    const result = await AI.chapterSummary(text);
+    if (result && !result.error && result.summary3lines) {
+      let html = `<div class="cs-summary">📝 ${escapeHtml(result.summary3lines)}</div>`;
+      if (result.characters?.length) {
+        html += `<div class="cs-characters" style="margin-top:5px">👤 <b>인물:</b> ${result.characters.map(c => escapeHtml(c)).join(', ')}</div>`;
+      }
+      if (result.keyScenes?.length) {
+        html += `<div class="cs-scenes" style="margin-top:3px">🎬 <b>장면:</b> ${result.keyScenes.map(s => escapeHtml(s)).join(', ')}</div>`;
+      }
+      if (result.expressions?.length) {
+        html += `<div class="cs-expr" style="margin-top:3px">💡 <b>표현:</b> ${result.expressions.map(e => escapeHtml(e)).join(', ')}</div>`;
+      }
+      csDiv.innerHTML = html;
+    } else {
+      csDiv.style.display = 'none';
+    }
   },
 
   _offerVocabSave() {
@@ -779,7 +807,7 @@ let App = {
     
     const fb = $('study-feedback');
     const vocabBtn = document.createElement('div');
-    vocabBtn.style.cssText = 'margin-top:12px';
+    vocabBtn.className = 'mt-16';
     vocabBtn.innerHTML = `
       <button class="btn" onclick="App.saveWordFromSentence()">📝 단어장에 저장</button>
     `;
@@ -803,9 +831,9 @@ let App = {
     overlay.innerHTML = `
       <div class="modal">
         <h2>📝 저장할 단어 선택</h2>
-        <p style="font-size:13px;color:var(--tx2);margin-bottom:12px">이 문장에서 단어장에 저장할 단어를 선택하세요:</p>
-        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px">
-          ${words.map((w, i) => `<button class="vocab-select-word" data-word="${escapeHtml(w)}" style="padding:6px 12px;border:1px solid var(--bd);border-radius:var(--r-sm);background:var(--bg3);color:var(--tx);font-size:13px;cursor:pointer;font-family:var(--font);transition:var(--t)">${escapeHtml(w)}</button>`).join('')}
+        <p class="vocab-select-desc">이 문장에서 단어장에 저장할 단어를 선택하세요:</p>
+        <div class="vocab-select-list">
+          ${words.map((w, i) => `<button class="vocab-select-word" data-word="${escapeHtml(w)}">${escapeHtml(w)}</button>`).join('')}
         </div>
         <div class="modal-actions">
           <button class="btn-s" id="vocab-select-cancel">취소</button>
@@ -942,10 +970,83 @@ let App = {
       this.showToast('복습할 단어가 없습니다!', 'info');
       return;
     }
-    // Switch to vocabulary page and show review
+    
+    this._reviewWords = words;
+    this._reviewIndex = 0;
+    this._reviewRevealed = false;
+    
+    // Switch to vocabulary page and show review modal
     this.switchView('vocabulary');
-    // TODO: implement full SRS review modal
-    this.showToast(`${words.length}개 단어 복습 시간!`, 'info');
+    this._showReviewCard();
+  },
+
+  _showReviewCard() {
+    const modal = $('review-modal');
+    const front = $('review-front');
+    const back = $('review-back');
+    const meaning = $('review-meaning');
+    const context = $('review-context');
+    const scene = $('review-scene');
+    const progress = $('review-progress');
+    const footer = $('review-footer');
+    const card = $('review-card');
+    const actions = $('review-actions');
+    
+    const idx = this._reviewIndex;
+    const word = this._reviewWords[idx];
+    
+    if (!word) {
+      this._finishReview();
+      return;
+    }
+    
+    progress.textContent = `${idx + 1} / ${this._reviewWords.length}`;
+    front.textContent = word.word;
+    meaning.textContent = word.meaningKo || '(뜻 정보 없음)';
+    context.textContent = word.contextSentence ? `"${word.contextSentence}"` : '';
+    scene.textContent = word.sceneNote || '';
+    
+    back.classList.remove('show');
+    this._reviewRevealed = false;
+    card.style.cursor = 'pointer';
+    
+    footer.textContent = `현재 상태: ${statusLabel(word.status)}`;
+    
+    // Click card to flip (reveal meaning)
+    card.onclick = () => {
+      if (!this._reviewRevealed) {
+        back.classList.add('show');
+        this._reviewRevealed = true;
+        card.style.cursor = 'default';
+      }
+    };
+    
+    // Rating buttons
+    actions.querySelectorAll('.review-btn').forEach(btn => {
+      btn.onclick = async () => {
+        if (!this._reviewRevealed) {
+          this.showToast('먼저 카드를 클릭해서 뜻을 확인하세요!', 'info');
+          return;
+        }
+        const status = btn.dataset.status;
+        await updateVocabStatus(word.id, status);
+        word.status = status;
+        this._reviewIndex++;
+        this._showReviewCard();
+      };
+    });
+    
+    modal.classList.add('open');
+  },
+
+  _finishReview() {
+    const modal = $('review-modal');
+    modal.classList.remove('open');
+    this.showToast(`✅ 복습 완료! (${this._reviewWords.length}개 단어)`, 'success');
+    this.renderVocabulary();
+    delete this._reviewWords;
+    delete this._reviewIndex;
+    delete this._reviewRevealed;
   },
 
   /* ===== TTS Controls ===== */
@@ -985,7 +1086,7 @@ let App = {
       theme: 'dark', lineHeight: 1.9
     };
     
-    AI.setKey(s.aiKey);
+    AI.setKey(s.aiKey, s.apiKeyStorageMode);
     AI.setBaseUrl(s.aiBaseUrl);
     AI.setModel(s.aiModel);
     
@@ -999,7 +1100,7 @@ let App = {
       this.showToast('API 키를 입력해주세요.', 'error');
       return;
     }
-    AI.setKey(key);
+    AI.setKey(key, $('settings-key-mode').value);
     AI.setBaseUrl($('settings-url').value.trim());
     AI.setModel($('settings-model').value.trim());
     

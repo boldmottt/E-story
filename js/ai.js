@@ -32,14 +32,21 @@ const AI = {
     this._readingContext = { bookTitle: '', chunkIndex: 0, totalChunks: 0 };
     this._cache = new Map();
 
-    const sessionKey = sessionStorage.getItem('estory_ai_key');
-    if (sessionKey) { this._key = sessionKey; this._mode = 'real'; }
-
+    // Check storage for existing key — respects apiKeyStorageMode
     try {
       const s = await getSettings();
+      if (s.apiKeyStorageMode === 'persist') {
+        const storedKey = localStorage.getItem('estory_ai_key');
+        if (storedKey) { this._key = storedKey; this._mode = 'real'; this._storageMode = 'persist'; }
+      } else {
+        const sessionKey = sessionStorage.getItem('estory_ai_key');
+        if (sessionKey) { this._key = sessionKey; this._mode = 'real'; }
+      }
+      // Always fall back to DB-stored key
       if (s.aiKey && s.aiKey !== 'OPENCODE_GO_API_KEY' && s.aiKey !== 'OPENCODE_ZEN_API_KEY') {
         this._key = s.aiKey;
         this._mode = 'real';
+        this._storageMode = s.apiKeyStorageMode || 'session';
       }
       // Use settings for baseUrl/model if configured
       if (s.aiBaseUrl) this._baseUrl = s.aiBaseUrl;
@@ -47,11 +54,16 @@ const AI = {
     } catch(e) {}
   },
 
-  setKey(key) {
+  setKey(key, storageMode) {
     if (key && key.trim()) {
       this._key = key.trim();
       this._mode = 'real';
-      sessionStorage.setItem('estory_ai_key', this._key);
+      this._storageMode = storageMode || this._storageMode || 'session';
+      if (this._storageMode === 'persist') {
+        localStorage.setItem('estory_ai_key', this._key);
+      } else {
+        sessionStorage.setItem('estory_ai_key', this._key);
+      }
     }
   },
 
@@ -151,7 +163,7 @@ const AI = {
       const [code, ...msgParts] = (e.message || 'unknown|Unknown error').split('|');
       const msg = msgParts.join('|') || e.message;
 
-      console.warn(`AI call failed [${code}]: ${msg}`);
+      console.warn('AI call failed:', e);
 
       // Dispatch specific error events
       if (code === 'auth' || code === 'no_key') {

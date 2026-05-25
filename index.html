@@ -22,7 +22,7 @@
     </div>
     <div class="nav-item" data-view="queue">
       <span class="ico">⏰</span><span>나중에 공부</span>
-      <span id="queue-badge" style="display:none;margin-left:auto;background:var(--a3);color:#000;padding:0 6px;border-radius:8px;font-size:10px;font-weight:700"></span>
+      <span id="queue-badge" class="queue-badge"></span>
     </div>
     <div class="nav-item" data-view="history">
       <span class="ico">📝</span><span>피드백 이력</span>
@@ -31,7 +31,7 @@
       <span class="ico">⚙️</span><span>설정</span>
     </div>
   </div>
-  <div class="sidebar-foot" style="font-size:10px;color:var(--tx3);text-align:center">Story-first, Study-on-demand</div>
+  <div class="sidebar-foot">Story-first, Study-on-demand</div>
 </nav>
 
 <!-- ===== Main ===== -->
@@ -49,9 +49,9 @@
   <div class="content active" id="bookshelf-page">
     <div class="bookshelf" id="bookshelf-grid">
       <div class="upload-area" id="upload-area">
-        <div style="font-size:32px;margin-bottom:8px">📂</div>
-        <div style="font-size:14px;margin-bottom:4px">txt 파일을 업로드하세요</div>
-        <div style="font-size:12px">또는 여기로 드래그 & 드롭</div>
+        <div class="upload-icon">📂</div>
+        <div class="upload-label">txt 파일을 업로드하세요</div>
+        <div class="upload-hint">또는 여기로 드래그 & 드롭</div>
         <input type="file" id="file-input" accept=".txt">
       </div>
     </div>
@@ -79,8 +79,8 @@
 
   <!-- ===== Queue Page ===== -->
   <div class="content" id="queue-page">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-      <h2 style="font-size:16px;font-weight:600">⏰ 나중에 공부</h2>
+    <div class="page-header-row">
+      <h2 class="page-heading" style="margin-bottom:0">⏰ 나중에 공부</h2>
       <button class="btn-s" id="queue-clear">모두 완료</button>
     </div>
     <div class="queue-list" id="queue-list"></div>
@@ -88,13 +88,13 @@
 
   <!-- ===== History Page ===== -->
   <div class="content" id="history-page">
-    <h2 style="font-size:16px;font-weight:600;margin-bottom:16px">📝 피드백 이력</h2>
+    <h2 class="page-heading">📝 피드백 이력</h2>
     <div class="history-list" id="history-list"></div>
   </div>
 
   <!-- ===== Settings Page ===== -->
   <div class="content" id="settings-page">
-    <h2 style="font-size:16px;font-weight:600;margin-bottom:16px">⚙️ 설정</h2>
+    <h2 class="page-heading">⚙️ 설정</h2>
     
     <div class="settings-group">
       <h3>🤖 AI 피드백 (BYOK)</h3>
@@ -170,12 +170,33 @@
     
     <div class="compare-view" id="study-compare"></div>
     
-    <div id="study-buddy" style="margin-top:16px"></div>
+    <div id="study-buddy" class="mt-16"></div>
   </div>
 </div>
 
 <!-- ===== Toast Container ===== -->
 <div class="toast-container" id="toast-container"></div>
+
+<!-- ===== Review Modal ===== -->
+<div class="modal-overlay" id="review-modal">
+  <div class="modal review-modal-box">
+    <div class="review-progress" id="review-progress"></div>
+    <div class="review-card" id="review-card">
+      <div class="rc-front" id="review-front"></div>
+      <div class="rc-back" id="review-back">
+        <div class="rc-meaning" id="review-meaning"></div>
+        <div class="rc-context" id="review-context"></div>
+        <div class="rc-scene" id="review-scene"></div>
+      </div>
+    </div>
+    <div class="review-actions" id="review-actions">
+      <button class="review-btn forget" data-status="new">😵 몰라요</button>
+      <button class="review-btn unsure" data-status="learning">🤔 애매해요</button>
+      <button class="review-btn know" data-status="known">✅ 알아요</button>
+    </div>
+    <div class="review-footer" id="review-footer"></div>
+  </div>
+</div>
 
 <!-- ===== Scripts ===== -->
 <script src="https://unpkg.com/dexie@3.2.6/dist/dexie.js" integrity="sha384-1g2YcQrnlYyCMmMxfSGYR88NfTDKVZQFRR+5IH7q79H6+6V0qlrFEJAo1NX5HQ2" crossorigin="anonymous"></script>

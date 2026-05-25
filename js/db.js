@@ -27,6 +27,7 @@ DB.version(2).stores({
 
 /* ===== Books ===== */
 async function addBook(file, content) {
+  // Strip .txt extension, remove _djvu suffix (legacy DjVu source residue), then convert underscores to spaces
   const title = file.name.replace(/\.txt$/i, '').replace(/_djvu$/, '').replace(/_/g, ' ');
   const id = await DB.books.add({
     title, fileName: file.name,
@@ -313,7 +314,7 @@ async function importData(json) {
 /* ===== Helpers ===== */
 function simpleHash(s) {
   let h = 0;
-  for (let i = 0; i < Math.min(s.length, 1000); i++) {
+  for (let i = 0; i < s.length; i++) {
     h = ((h << 5) - h) + s.charCodeAt(i);
     h |= 0;
   }

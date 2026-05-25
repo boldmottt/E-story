@@ -120,7 +120,7 @@ async function getSentences(chunkId) {
 // L5: Better chunk split — use character count not fixed 10 parts
 function splitIntoChunks(text) {
   // Try chapter/section headings
-  const chapterRegex = /(?:^|\n)(?:(?:CHAPTER|Chapter|chapter)\s+[\w\s,.!?'"|—–-]+|Prologue|ProLoGuE|Epilogue)(?:\n|$)/g;
+  const chapterRegex = /(?:^|\n)(?:(?:CHAPTER|Chapter|chapter)\s+[\w\s,.!?'"—–-]+|Prologue|ProLoGuE|Epilogue|PART\s+\w+)(?:\n|$)/g;
   let matches = [...text.matchAll(chapterRegex)];
   
   // Filter out table of contents lines (multiple numbers)
@@ -161,8 +161,8 @@ function splitIntoChunks(text) {
 function splitSentences(text) {
   text = text.replace(/\s+/g, ' ').trim();
   
-  // Handle common abbreviations that shouldn't split
-  const abbreviations = /\b(Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc|e\.g|i\.g|i\.e|Esq|Hon|Rev|Capt|Col|Gen|Lt|Sgt|Vol|Figs?|Figs?|Eds?|paras?|Dept|Ave|Blvd|Rd|Pkwy|St|Sq|Ct|Ln|Dr|Way|Pl|Cir|Ave|Blvd|Rd|Pkwy|St|Sq|Ct|Ln|Dr|Way|Pl|Cir)\.\s/g;
+  // Handle common abbreviations that shouldn't split (deduped)
+  const abbreviations = /\b(Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc|e\.g|i\.e|Esq|Hon|Capt|Col|Gen|Lt|Sgt|Vol|Dept|Ave|Blvd|Rd|Pkwy|Sq|Ct|Ln|Way|Pl|Cir)\.\s/g;
   const abbrHits = [...text.matchAll(new RegExp(abbreviations, 'gi'))];
   const protectedText = text.replace(abbreviations, (m) => m.replace('.', '<<<DOT>>>'));
   
@@ -177,7 +177,7 @@ function splitSentences(text) {
 
 /* ===== Vocabulary ===== */
 async function addWord(word, meaning, sentence, bookId, sentenceId, scene) {
-  const existing = await DB.vocabulary.where('word').equals(word.toLowerCase()).first();
+  const existing = await DB.vocabulary.where({word: word.toLowerCase(), bookId: bookId}).first();
   if (existing) return existing.id;
   return await DB.vocabulary.add({
     word: word.toLowerCase(), lemma: word.toLowerCase(), meaningKo: meaning,
@@ -247,9 +247,9 @@ async function saveFeedbackSession(bookId, sentenceId, originalSentence, attempt
 }
 
 async function getFeedbackHistory(bookId) {
-  let sessions = await DB.feedbackSessions.orderBy('createdAt').reverse().toArray();
-  if (bookId) sessions = sessions.filter(s => s.bookId === bookId);
-  return sessions.slice(0, 50);
+  let query = DB.feedbackSessions.orderBy('createdAt').reverse();
+  if (bookId) query = query.filter(s => s.bookId === bookId);
+  return query.limit(50).toArray();
 }
 
 /* ===== Settings (with extended defaults for C5 restore) ===== */

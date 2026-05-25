@@ -87,7 +87,7 @@ let App = {
       this.showToast('⚠️ AI 오류: ' + e.detail.message, 'error');
     });
     
-    // Close quick menu on outside click (L10: single global listener)
+    // Close quick menu on outside click
     document.addEventListener('click', (e) => {
       if (!e.target.closest('.quick-menu') && !e.target.closest('.sent') && !e.target.closest('.qm-word')) {
         this.closeQuickMenu();
@@ -102,83 +102,6 @@ let App = {
         this._saveScrollPosition();
       }, 300);
     }, { passive: true });
-    
-    // Sync init
-    const syncKey = localStorage.getItem('estory_sync_key');
-    if (syncKey) {
-      Sync.init(syncKey);
-      if (Sync.isEnabled()) {
-        // Pull remote data on first load
-        Sync.sync().then(result => {
-          if (result.success) {
-            console.log('Sync: initial pull complete');
-            this.showToast('☁️ 클라우드 동기화 완료!', 'info');
-            // Reload bookshelf with synced data
-            this.loadBookshelf();
-          }
-        });
-      }
-    }
-    
-    // Sync event handlers
-    $('sync-connect-btn')?.addEventListener('click', () => this.connectSync());
-    $('sync-push-btn')?.addEventListener('click', () => this.syncPush());
-    $('sync-pull-btn')?.addEventListener('click', () => this.syncPull());
-  },
-
-  // ── Sync methods ──
-  connectSync() {
-    const key = $('settings-sync-key')?.value.trim();
-    if (!key) {
-      this.showToast('Anon Key를 입력해주세요.', 'error');
-      return;
-    }
-    localStorage.setItem('estory_sync_key', key);
-    Sync.init(key);
-    if (Sync.isEnabled()) {
-      this.showToast('☁️ 동기화 연결 성공!', 'success');
-      $('sync-status').textContent = '동기화: 연결됨';
-      // Initial sync
-      Sync.sync().then(r => {
-        if (r.success) {
-          this.showToast(`☁️ 동기화 완료!`, 'success');
-          this.loadBookshelf();
-        }
-      });
-    } else {
-      this.showToast('❌ 동기화 연결 실패', 'error');
-    }
-  },
-
-  async syncPush() {
-    if (!Sync.isEnabled()) {
-      this.showToast('먼저 동기화를 연결해주세요.', 'error');
-      return;
-    }
-    this.showToast('⬆️ 업로드 중...', 'info');
-    const result = await Sync.pushAll();
-    if (result.success) {
-      $('sync-status').textContent = `동기화: 연결됨 (마지막: ${new Date().toLocaleTimeString()})`;
-      this.showToast('✅ 업로드 완료!', 'success');
-    } else {
-      this.showToast('❌ 업로드 실패', 'error');
-    }
-  },
-
-  async syncPull() {
-    if (!Sync.isEnabled()) {
-      this.showToast('먼저 동기화를 연결해주세요.', 'error');
-      return;
-    }
-    this.showToast('⬇️ 다운로드 중...', 'info');
-    const result = await Sync.pullAll();
-    if (result.success) {
-      $('sync-status').textContent = `동기화: 연결됨 (마지막: ${new Date().toLocaleTimeString()})`;
-      this.showToast(`✅ ${result.totalCount}개 레코드 동기화 완료!`, 'success');
-      this.loadBookshelf();
-    } else {
-      this.showToast('❌ 다운로드 실패', 'error');
-    }
   },
 
   _saveScrollPosition() {
@@ -1049,12 +972,6 @@ let App = {
     $('settings-tts-val').textContent = s.ttsRate + 'x';
     $('settings-fontsize').value = s.fontSize || 16;
     $('settings-fs-val').textContent = s.fontSize + 'px';
-    
-    // Sync status
-    if (Sync.isEnabled()) {
-      $('sync-status').textContent = '동기화: 연결됨';
-      $('settings-sync-key').value = '••••••••';
-    }
   },
 
   async saveSettings() {

@@ -670,6 +670,7 @@ let App = {
 
     const roles = this._STRUCT_ROLES;
     let hit = 0, labeled = 0;
+    const review = [];
     overlay.querySelectorAll('.struct-tok').forEach((el, i) => {
       const item = data.items[i] || {};
       const canon = this._canonRole(item.role);
@@ -679,24 +680,51 @@ let App = {
       const acceptSet = acceptRaw.map(r => this._canonRole(r)).filter(Boolean);
       if (canon && !acceptSet.includes(canon)) acceptSet.push(canon);
 
-      // 토큰을 '정답 역할' 색으로 칠하고, 이유를 hover로 노출 (채점과 설명이 같은 분석에서 나옴)
+      // 토큰을 '정답 역할' 색으로 칠함 (채점과 설명이 같은 분석에서 나옴)
       el.className = 'struct-tok' + (correctIdx >= 0 ? ' r' + correctIdx : '');
       if (item.why && canon) el.title = `${canon} — ${item.why}`;
 
       const userRole = this._structUser[i];
+      let status = 'skip'; // skip | ok | miss
       if (userRole !== undefined) {
         labeled++;
-        if (acceptSet.includes(roles[userRole])) { el.classList.add('ok'); hit++; }
-        else el.classList.add('miss');
+        if (acceptSet.includes(roles[userRole])) { el.classList.add('ok'); hit++; status = 'ok'; }
+        else { el.classList.add('miss'); status = 'miss'; }
       }
+      review.push({
+        word: el.textContent,
+        mine: userRole !== undefined ? roles[userRole] : null,
+        correct: canon, correctIdx,
+        alt: acceptSet.filter(r => r && r !== canon),
+        why: item.why || '', status,
+      });
     });
     const score = labeled ? Math.round((hit / labeled) * 100) : 0;
+
+    // 오답 → 미선택 → 정답 순으로 정렬해 틀린 것부터 한눈에
+    const order = { miss: 0, skip: 1, ok: 2 };
+    const rowHtml = [...review].sort((a, b) => order[a.status] - order[b.status]).map(r => {
+      const ci = r.correctIdx >= 0 ? ' r' + r.correctIdx : '';
+      let verdict;
+      if (r.status === 'ok') verdict = `<span class="sr-ok">✓ 정답</span>`;
+      else if (r.status === 'miss') verdict = `<span class="sr-miss">✗ 내 답 <b>${escapeHtml(r.mine)}</b> → 정답 <b>${escapeHtml(r.correct || '?')}</b></span>`;
+      else verdict = `<span class="sr-skip">미선택 · 정답 <b>${escapeHtml(r.correct || '?')}</b></span>`;
+      const altTxt = r.alt.length ? ` <span class="sr-alt">(${escapeHtml(r.alt.join('/'))}도 인정)</span>` : '';
+      return `<div class="sr-item ${r.status}">
+        <span class="sr-word${ci}">${escapeHtml(r.word)}</span>
+        <div class="sr-detail">
+          <div class="sr-verdict">${verdict}${altTxt}</div>
+          ${r.why ? `<div class="sr-why">${escapeHtml(r.why)}</div>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+
     const legend = roles.map((r, ri) => `<span class="struct-legend r${ri}">${r}</span>`).join('');
     res.innerHTML = `
       <div class="struct-score">정답률 ${score}% <span class="struct-sub">(${hit}/${labeled})</span></div>
       <div class="struct-legend-row">${legend}</div>
       ${data.note ? `<div class="struct-note">💡 ${escapeHtml(data.note)}</div>` : ''}
-      <div class="struct-tip">색 = 정답 역할 · 초록 ✓ 정답 · 빨강 ✗ 오답 · 단어에 마우스를 올리면 이유 표시</div>`;
+      <div class="struct-review">${rowHtml}</div>`;
   },
 
   async openStudy() {

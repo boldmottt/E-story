@@ -579,6 +579,28 @@ let App = {
   // ── 구조 분석 훈련 (능동 태깅) ──
   _STRUCT_ROLES: ['주어', '동사', '목적어', '보어', '수식어', '기능어'],
 
+  // AI가 6종 외 변형 라벨을 돌려줘도 정답으로 인정되도록 정규화 (정답인데 오답 처리되던 버그 방지)
+  _ROLE_CANON: {
+    '주어':'주어', '주부':'주어', '주어부':'주어',
+    '동사':'동사', '술어':'동사', '술어동사':'동사', '본동사':'동사', '동사구':'동사',
+    '목적어':'목적어', '목적부':'목적어', '직접목적어':'목적어', '간접목적어':'목적어',
+    '보어':'보어', '주격보어':'보어', '목적격보어':'보어', '보격':'보어',
+    '수식어':'수식어', '수식':'수식어', '부사':'수식어', '부사어':'수식어', '부사구':'수식어',
+    '형용사':'수식어', '형용사구':'수식어', '관형어':'수식어',
+    '기능어':'기능어', '관사':'기능어', '전치사':'기능어', '접속사':'기능어',
+    '조동사':'기능어', '한정사':'기능어', '구두점':'기능어', '조사':'기능어', '대명사':'기능어',
+  },
+
+  _canonRole(raw) {
+    if (!raw) return null;
+    const s = String(raw).replace(/\(.*?\)/g, '').replace(/\s+/g, '');
+    if (this._ROLE_CANON[s]) return this._ROLE_CANON[s];
+    // 더 구체적인(긴) 키부터 부분 일치 검사
+    const keys = Object.keys(this._ROLE_CANON).sort((a, b) => b.length - a.length);
+    for (const k of keys) if (s.includes(k)) return this._ROLE_CANON[k];
+    return null;
+  },
+
   openStructure() {
     this.closeQuickMenu();
     const sentence = this.selectedSentence?.text;
@@ -641,21 +663,30 @@ let App = {
 
     const data = await AI.analyzeStructure(sentence);
     submitBtn.disabled = false;
-    if (!data || data.error) {
+    if (!data || data.error || !Array.isArray(data.items)) {
       res.innerHTML = '⚠️ 분석 실패 — 잠시 후 다시 시도해주세요.';
       return;
     }
 
     const roles = this._STRUCT_ROLES;
-    const correctIdx = data.roles.map(r => roles.indexOf(r));
     let hit = 0, labeled = 0;
     overlay.querySelectorAll('.struct-tok').forEach((el, i) => {
-      const correct = correctIdx[i];
-      el.className = 'struct-tok' + (correct >= 0 ? ' r' + correct : '');
+      const item = data.items[i] || {};
+      const canon = this._canonRole(item.role);
+      const correctIdx = roles.indexOf(canon);
+      // 정답 후보: accept 배열(없으면 role) → 모두 정규화
+      const acceptRaw = Array.isArray(item.accept) && item.accept.length ? item.accept : [item.role];
+      const acceptSet = acceptRaw.map(r => this._canonRole(r)).filter(Boolean);
+      if (canon && !acceptSet.includes(canon)) acceptSet.push(canon);
+
+      // 토큰을 '정답 역할' 색으로 칠하고, 이유를 hover로 노출 (채점과 설명이 같은 분석에서 나옴)
+      el.className = 'struct-tok' + (correctIdx >= 0 ? ' r' + correctIdx : '');
+      if (item.why && canon) el.title = `${canon} — ${item.why}`;
+
       const userRole = this._structUser[i];
       if (userRole !== undefined) {
         labeled++;
-        if (userRole === correct) { el.classList.add('ok'); hit++; }
+        if (acceptSet.includes(roles[userRole])) { el.classList.add('ok'); hit++; }
         else el.classList.add('miss');
       }
     });
@@ -665,7 +696,7 @@ let App = {
       <div class="struct-score">정답률 ${score}% <span class="struct-sub">(${hit}/${labeled})</span></div>
       <div class="struct-legend-row">${legend}</div>
       ${data.note ? `<div class="struct-note">💡 ${escapeHtml(data.note)}</div>` : ''}
-      <div class="struct-tip">색 = 정답 역할 · 초록 ✓ 정답 · 빨강 ✗ 오답</div>`;
+      <div class="struct-tip">색 = 정답 역할 · 초록 ✓ 정답 · 빨강 ✗ 오답 · 단어에 마우스를 올리면 이유 표시</div>`;
   },
 
   async openStudy() {

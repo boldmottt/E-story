@@ -274,15 +274,26 @@ const AI = {
    *  a large hidden budget here, so a high max_tokens is required. */
   async analyzeStructure(sentence) {
     const tokens = sentence.split(/\s+/).filter(Boolean);
-    const key = this._cacheKey('as', sentence);
+    const key = this._cacheKey('as2', sentence);
     return this._cached(key, async () => {
       const numbered = tokens.map((t, i) => `${i}: ${t}`).join('\n');
       const r = await this._call([
-        { role: 'system', content: `Return JSON: { "roles": [정확히 ${tokens.length}개 문자열], "note": "..." }` },
+        { role: 'system', content: `Return ONLY JSON:
+{
+  "items": [
+    { "role": "<주어|동사|목적어|보어|수식어|기능어 중 하나>", "accept": ["<같은 6종 중 정답으로 인정 가능한 역할 모두>"], "why": "<그 역할인 이유, 한국어 12자 내외>" }
+  ],
+  "note": "<문장 전체 구조 핵심, 한국어 한 줄>"
+}` },
         { role: 'user', content: numbered }
-      ], `위 영어 문장의 각 토큰(인덱스 0..${tokens.length - 1})에 문법 역할을 하나씩 부여하라. 역할은 정확히 다음 중 하나: 주어, 동사, 목적어, 보어, 수식어, 기능어. (기능어 = 관사·전치사·접속사·구두점 등). roles 배열 길이는 반드시 ${tokens.length}개이며 인덱스 순서대로. note는 문장 구조 핵심을 한국어 한 줄로.`, true, 8000);
-      if (r && !r.error && Array.isArray(r.roles) && r.roles.length === tokens.length) {
-        return { tokens, roles: r.roles, note: r.note || '' };
+      ], `각 토큰(인덱스 0..${tokens.length - 1})에 문법 역할을 부여한다.
+- role은 반드시 다음 6개 중 하나만: 주어, 동사, 목적어, 보어, 수식어, 기능어.
+- 기능어 = 관사·전치사·접속사·조동사·구두점처럼 문법 기능만 하는 단어.
+- 한 단어가 두 역할로 모두 타당하면(예: 분사·to부정사) accept에 모두 넣는다. accept에는 반드시 role을 포함한다.
+- items 길이는 정확히 ${tokens.length}개, 인덱스 순서대로.
+- why와 note는 위 역할 분류와 절대 모순되면 안 된다. 동일한 분석에서 도출하라.`, true, 8000);
+      if (r && !r.error && Array.isArray(r.items) && r.items.length === tokens.length) {
+        return { tokens, items: r.items, note: r.note || '' };
       }
       return { error: true, tokens };
     });

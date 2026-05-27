@@ -160,9 +160,18 @@ code{font-family:var(--font-mono);font-size:.85em;background:var(--bg4);padding:
 .qm-btn.gist{background:rgba(179,129,43,.16);color:var(--a2)}
 .qm-btn.structure{background:rgba(122,86,137,.16);color:var(--a4)}
 .qm-btn.study{background:rgba(166,69,30,.14);color:var(--a0)}
+.qm-btn.ask{background:rgba(122,86,137,.14);color:var(--a4)}
 .qm-btn.queue{background:var(--bg4);color:var(--tx2)}
 .qm-btn:hover{filter:brightness(.96);transform:translateY(-1px)}
 .qm-btn .badge{font-size:var(--t-meta);opacity:.7}
+
+/* ===== 자유 질문 ===== */
+.qm-ask-wrap{display:flex;flex-direction:column;gap:8px}
+.qm-ask-input{width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--bd);border-radius:var(--r-sm);background:var(--bg2);color:var(--tx1);font-family:var(--font);font-size:var(--t-sm);line-height:1.5;resize:vertical}
+.qm-ask-input:focus{outline:none;border-color:var(--a4)}
+.qm-ask-send{align-self:flex-end;padding:7px 16px;border:none;border-radius:var(--r-sm);background:var(--a4);color:#fff;font-family:var(--font);font-size:var(--t-sm);font-weight:500;cursor:pointer;transition:var(--t)}
+.qm-ask-send:hover{filter:brightness(.96)}
+.qm-ask-answer{display:none;margin-top:10px;padding:10px 12px;border-radius:var(--r-sm);background:var(--bg2);color:var(--tx1);font-size:var(--t-sm);line-height:1.6;white-space:pre-wrap}
 
 /* ===== 구조 분석 훈련 ===== */
 .struct-modal{max-width:560px}

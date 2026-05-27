@@ -87,6 +87,12 @@ let App = {
         this.saveWordDirect(vocabBtn.dataset.word, vocabBtn.dataset.meaning);
         return;
       }
+      const askSend = e.target.closest('.qm-ask-send');
+      if (askSend) {
+        e.stopPropagation();
+        this.submitFreeQuestion();
+        return;
+      }
       const wordEl = e.target.closest('.qm-word');
       if (wordEl) {
         e.stopPropagation();
@@ -102,6 +108,7 @@ let App = {
         grammar: () => this.grammarHint(),
         gist: () => this.sentenceGist(),
         structure: () => this.openStructure(),
+        ask: () => this.askFreeQuestion(),
         study: () => this.openStudy(),
         queue: () => this.queueLater()
       };
@@ -511,6 +518,7 @@ let App = {
         <button class="qm-btn grammar" data-action="grammar">🔍 구문 힌트</button>
         <button class="qm-btn structure" data-action="structure">🏷️ 구조 분석</button>
         <button class="qm-btn gist" data-action="gist">📋 문장 요지</button>
+        <button class="qm-btn ask" data-action="ask">💬 자유 질문</button>
         <button class="qm-btn study" data-action="study">✍️ 해석해보기</button>
         <button class="qm-btn queue" data-action="queue">⏰ 나중에</button>
       </div>
@@ -574,6 +582,40 @@ let App = {
       return;
     }
     result.textContent = `📋 ${data.gistKo}`;
+  },
+
+  // 문장에 대해 AI에게 자유롭게 질문하는 입력칸을 연다.
+  askFreeQuestion() {
+    const result = $('hint-result');
+    result.style.display = 'block';
+    result.innerHTML = `
+      <div class="qm-ask-wrap">
+        <textarea class="qm-ask-input" id="qm-ask-input" rows="2" placeholder="이 문장에 대해 무엇이든 물어보세요 (예: 이 표현 무슨 뜻이야?)"></textarea>
+        <button class="qm-ask-send">질문하기</button>
+      </div>
+      <div id="qm-ask-answer" class="qm-ask-answer"></div>
+    `;
+    const ta = $('qm-ask-input');
+    ta?.focus();
+    ta?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        this.submitFreeQuestion();
+      }
+    });
+  },
+
+  async submitFreeQuestion() {
+    const ta = $('qm-ask-input');
+    const ans = $('qm-ask-answer');
+    if (!ta || !ans) return;
+    const question = ta.value.trim();
+    if (!question) { ta.focus(); return; }
+    ans.style.display = 'block';
+    ans.textContent = '생각 중...';
+    const context = `책: "${this.currentBook?.title || '알 수 없음'}", 챕터: ${this.currentSelectedChunkIndex + 1}/${this.currentChunks?.length || '?'} (${this.currentChunk?.title || ''})`;
+    const data = await AI.storyBuddy(this.selectedSentence.text, question, context);
+    ans.textContent = data.answerKo || '답변을 불러올 수 없습니다.';
   },
 
   // ── 구조 분석 훈련 (능동 태깅) ──

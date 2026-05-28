@@ -1380,33 +1380,71 @@ let App = {
     
     const idx = this._reviewIndex;
     const word = this._reviewWords[idx];
-    
+
     if (!word) {
       this._finishReview();
       return;
     }
-    
+
     progress.textContent = `${idx + 1} / ${this._reviewWords.length}`;
-    front.textContent = word.word;
-    meaning.textContent = word.meaningKo || '(뜻 정보 없음)';
-    context.textContent = word.contextSentence ? `"${word.contextSentence}"` : '';
-    scene.textContent = word.sceneNote || '';
-    
     back.classList.remove('show');
     this._reviewRevealed = false;
     card.style.cursor = 'pointer';
-    
     footer.textContent = `현재 상태: ${statusLabel(word.status)}`;
-    
-    // Click card to flip (reveal meaning)
-    card.onclick = () => {
-      if (!this._reviewRevealed) {
+
+    // Production card when the saved context contains the word/expression:
+    // show Korean meaning + a cloze blank and ask the learner to recall the
+    // English. Otherwise fall back to a recognition card (word → meaning).
+    const reExpr = new RegExp(word.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    const isProduction = !!(word.meaningKo && word.contextSentence && reExpr.test(word.contextSentence));
+
+    if (isProduction) {
+      const cloze = word.contextSentence.replace(reExpr, '_____');
+      front.innerHTML = `
+        <div class="rc-mode">✍️ 영어로 떠올리기</div>
+        <div class="rc-prompt">${escapeHtml(word.meaningKo)}</div>
+        <div class="rc-cloze">"${escapeHtml(cloze)}"</div>
+        <input id="rc-input" class="rc-input" placeholder="영어로 입력" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <button id="rc-check" class="rc-check">확인</button>
+        <div id="rc-judge" class="rc-judge"></div>`;
+      meaning.textContent = word.word;
+      context.textContent = word.contextSentence ? `"${word.contextSentence}"` : '';
+      scene.textContent = word.sceneNote || '';
+
+      const reveal = () => {
+        if (this._reviewRevealed) return;
+        const input = $('rc-input');
+        const judge = $('rc-judge');
+        if (input && judge) {
+          const ok = input.value.trim().toLowerCase() === word.word.toLowerCase();
+          judge.textContent = ok ? '✅ 정답!' : (input.value.trim() ? '↩︎ 정답을 확인하세요' : '정답을 확인하세요');
+          judge.className = 'rc-judge ' + (ok ? 'ok' : 'no');
+        }
         back.classList.add('show');
         this._reviewRevealed = true;
         card.style.cursor = 'default';
-      }
-    };
-    
+      };
+      card.onclick = (e) => { if (!e.target.closest('#rc-input')) reveal(); };
+      setTimeout(() => {
+        $('rc-check')?.addEventListener('click', (e) => { e.stopPropagation(); reveal(); });
+        $('rc-input')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); reveal(); } });
+        $('rc-input')?.focus();
+      }, 0);
+    } else {
+      front.textContent = word.word;
+      meaning.textContent = word.meaningKo || '(뜻 정보 없음)';
+      context.textContent = word.contextSentence ? `"${word.contextSentence}"` : '';
+      scene.textContent = word.sceneNote || '';
+      // Click card to flip (reveal meaning)
+      card.onclick = () => {
+        if (!this._reviewRevealed) {
+          back.classList.add('show');
+          this._reviewRevealed = true;
+          card.style.cursor = 'default';
+        }
+      };
+    }
+
     // Rating buttons
     actions.querySelectorAll('.review-btn').forEach(btn => {
       btn.onclick = async () => {

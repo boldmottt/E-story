@@ -382,6 +382,16 @@ code{font-family:var(--font-mono);font-size:.85em;background:var(--bg4);padding:
 .review-card .rc-meaning{font-size:var(--t-md);color:var(--tx2);margin-bottom:8px}
 .review-card .rc-context{font-size:var(--t-sm);color:var(--tx3);font-style:italic;margin-bottom:4px;font-family:var(--font-read)}
 .review-card .rc-scene{font-size:var(--t-sm);color:var(--a2);margin-top:4px}
+.review-card .rc-mode{font-size:var(--t-meta);font-weight:700;color:var(--a4);letter-spacing:.04em;margin-bottom:10px}
+.review-card .rc-prompt{font-size:1.25rem;font-weight:600;color:var(--tx);margin-bottom:8px;font-family:var(--font-read)}
+.review-card .rc-cloze{font-size:var(--t-sm);color:var(--tx3);font-style:italic;font-family:var(--font-read);margin-bottom:12px}
+.review-card .rc-input{width:100%;max-width:280px;padding:10px 12px;border:1px solid var(--bd2);border-radius:var(--r-sm);background:var(--bg3);color:var(--tx);font-family:var(--font-read);font-size:var(--t-md);text-align:center}
+.review-card .rc-input:focus{border-color:var(--a4);box-shadow:0 0 0 3px rgba(122,86,137,.12)}
+.review-card .rc-check{margin-top:10px;padding:8px 18px;border:none;border-radius:var(--r-sm);background:var(--a4);color:#fff;font-family:var(--font);font-size:var(--t-sm);font-weight:600;cursor:pointer}
+.review-card .rc-check:hover{filter:brightness(.96)}
+.review-card .rc-judge{margin-top:8px;font-size:var(--t-sm);font-weight:600;min-height:1.2em}
+.review-card .rc-judge.ok{color:var(--a1)}
+.review-card .rc-judge.no{color:var(--a2)}
 .review-actions{display:flex;gap:8px;justify-content:center;margin-top:18px}
 .review-btn{padding:11px 20px;border:none;border-radius:var(--r-sm);font-size:var(--t-base);cursor:pointer;font-family:var(--font);font-weight:600;transition:var(--t)}
 .review-btn.forget{background:rgba(178,59,44,.14);color:var(--a3)}

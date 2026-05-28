@@ -188,9 +188,28 @@ function splitSentences(text) {
 }
 
 /* ===== Vocabulary ===== */
+
+// Count NEW vocabulary cards added since local midnight. addedAt isn't indexed,
+// so filter in memory — fine at local single-user scale (avoids a schema bump).
+async function countCardsAddedToday() {
+  const start = new Date(); start.setHours(0, 0, 0, 0);
+  const startTs = start.getTime();
+  return await DB.vocabulary.filter(v => (v.addedAt || 0) >= startTs).count();
+}
+
+// Returns the card id on success. When the daily cap is reached for a GENUINELY
+// new card, returns { blocked:true, cap } so the UI can hard-stop the add.
+// Re-adding an existing word is never blocked (dedup path).
 async function addWord(word, meaning, sentence, bookId, sentenceId, scene) {
   const existing = await DB.vocabulary.where({word: word.toLowerCase(), bookId: bookId}).first();
   if (existing) return existing.id;
+
+  const settings = await getSettings();
+  const cap = settings.dailyCardCap ?? 5;
+  if (cap > 0 && (await countCardsAddedToday()) >= cap) {
+    return { blocked: true, cap };
+  }
+
   return await DB.vocabulary.add({
     word: word.toLowerCase(), lemma: word.toLowerCase(), meaningKo: meaning,
     definitionEn: '', partOfSpeech: '', pronunciation: '', audioUrl: '',
@@ -277,6 +296,7 @@ async function getSettings() {
       aiModel: isLocal ? 'deepseek-v4-flash' : 'gpt-4o-mini',
       aiKey: '', aiKeyMode: 'session',
       apiKeyStorageMode: 'session',
+      dailyCardCap: 5,
       lastOpenedBookId: null, lastView: 'bookshelf'
     };
     await DB.settings.put(s);

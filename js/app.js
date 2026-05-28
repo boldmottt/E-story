@@ -556,7 +556,11 @@ let App = {
 
   async saveWordDirect(word, meaning) {
     if (!word) return;
-    await addWord(word, meaning || '', this.selectedSentence?.text || '', this.currentBook?.id, this.selectedSentence?.index, '');
+    const r = await addWord(word, meaning || '', this.selectedSentence?.text || '', this.currentBook?.id, this.selectedSentence?.index, '');
+    if (r && r.blocked) {
+      this.showToast(`오늘 새 카드 한도(${r.cap}개)에 도달했어요. 내일 다시 추가할 수 있어요.`, 'info');
+      return;
+    }
     this.showToast(`"${word}" 단어장에 추가됨!`, 'success');
   },
 
@@ -1047,7 +1051,12 @@ let App = {
         const word = btn.dataset.word;
         // M6: Fetch actual meaning from AI
         const meaning = await fetchWordMeaning(word, this.selectedSentence.text);
-        await addWord(word, meaning, this.selectedSentence.text, this.currentBook?.id, this.selectedSentence?.index, '');
+        const r = await addWord(word, meaning, this.selectedSentence.text, this.currentBook?.id, this.selectedSentence?.index, '');
+        if (r && r.blocked) {
+          this.showToast(`오늘 새 카드 한도(${r.cap}개)에 도달했어요. 내일 다시 추가할 수 있어요.`, 'info');
+          overlay.remove();
+          return;
+        }
         this.showToast(`"${word}" 단어장에 추가됨!`, 'success');
         this.updateQueueBadge();
         Sync.scheduleSync();
@@ -1274,6 +1283,7 @@ let App = {
     $('settings-tts-val').textContent = s.ttsRate + 'x';
     $('settings-fontsize').value = s.fontSize || 16;
     $('settings-fs-val').textContent = s.fontSize + 'px';
+    $('settings-card-cap').value = s.dailyCardCap ?? 5;
   },
 
   async saveSettings() {
@@ -1284,6 +1294,7 @@ let App = {
       apiKeyStorageMode: $('settings-key-mode').value,
       ttsRate: parseFloat($('settings-tts-rate').value),
       fontSize: parseInt($('settings-fontsize').value),
+      dailyCardCap: parseInt($('settings-card-cap').value) || 0,
       theme: 'dark', lineHeight: 1.9
     };
     

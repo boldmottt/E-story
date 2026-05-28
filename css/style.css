@@ -435,7 +435,9 @@ code{font-family:var(--font-mono);font-size:.85em;background:var(--bg4);padding:
 .review-btn.know:hover{background:rgba(95,138,79,.28)}
 .review-progress{font-size:var(--t-sm);color:var(--tx3);text-align:center;margin-bottom:14px;font-variant-numeric:tabular-nums}
 .review-footer{text-align:center;margin-top:14px;font-size:var(--t-sm);color:var(--tx3)}
-.review-modal-box{max-width:440px}
+.review-modal-box{max-width:440px;position:relative}
+.review-close{position:absolute;top:10px;right:10px;width:30px;height:30px;border:none;border-radius:50%;background:var(--bg4);color:var(--tx3);font-size:15px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:var(--t)}
+.review-close:hover{background:var(--a3);color:var(--on-accent)}
 .review-empty{padding:64px 24px;text-align:center;color:var(--tx3);font-family:var(--font-read)}
 .review-empty .icon{font-size:46px;margin-bottom:14px;opacity:.4}
 

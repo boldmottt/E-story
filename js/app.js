@@ -131,6 +131,9 @@ let App = {
     // Close study panel
     $('study-close')?.addEventListener('click', () => this.closeStudy());
     
+    // Close review modal
+    $('review-close')?.addEventListener('click', () => this.closeReview());
+    
     // Study submit
     $('study-submit')?.addEventListener('click', () => this.submitTranslation());
     
@@ -142,6 +145,7 @@ let App = {
       if (e.key === 'Escape') {
         this.closeQuickMenu();
         this.closeStudy();
+        this.closeReview();
       }
     });
     
@@ -1755,6 +1759,13 @@ let App = {
     modal.classList.remove('open');
     this.showToast(`✅ 복습 완료! (${this._reviewWords.length}개 단어)`, 'success');
     this.renderVocabulary();
+    delete this._reviewWords;
+    delete this._reviewIndex;
+    delete this._reviewRevealed;
+  },
+
+  closeReview() {
+    $('review-modal')?.classList.remove('open');
     delete this._reviewWords;
     delete this._reviewIndex;
     delete this._reviewRevealed;

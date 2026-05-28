@@ -130,7 +130,7 @@ const AI = {
   },
 
   /** Core API call with No-spoiler, JSON recovery, error classification */
-  async _call(messages, taskInstructions, jsonMode = true, maxTokens = 4000) {
+  async _call(messages, taskInstructions, jsonMode = true, maxTokens = 8000) {
     // Proxied mode holds the key server-side, so a browser key isn't required.
     if (!this._isProxied() && (this._mode !== 'real' || !this._key)) {
       window.dispatchEvent(new CustomEvent('ai:demo-fallback', { detail: { message: 'API 키가 설정되지 않음', code: 'no_key' } }));
@@ -148,10 +148,11 @@ const AI = {
       const body = {
         // deepseek-v4-flash is a reasoning model: it spends large token budgets
         // on hidden reasoning before emitting content. Too low a cap => empty
-        // content (finish_reason "length"). reasoning_effort:'low' keeps it concise.
+        // content (finish_reason "length"). reasoning_effort:'medium' balances
+        // reasoning depth with output availability.
         model: this._model, messages: fullMessages,
         max_tokens: maxTokens, temperature: 0.3, stream: false,
-        reasoning_effort: 'low'
+        reasoning_effort: 'medium'
       };
       if (jsonMode) body.response_format = { type: 'json_object' };
 
@@ -173,8 +174,27 @@ const AI = {
       }
 
       const data = await res.json();
-      let content = data.choices?.[0]?.message?.content;
-      if (!content) throw new Error('empty|Empty response from AI');
+      const msg = data.choices?.[0]?.message;
+      const finishReason = data.choices?.[0]?.finish_reason;
+      let content = msg?.content;
+
+      // Reasoning model fallback: content 가 비고 reasoning_content 에 답이 있는 경우
+      if (!content && msg?.reasoning_content) {
+        const reasoning = msg.reasoning_content;
+        const jsonMatch = reasoning.match(/```json\s*([\s\S]+?)\s*```/) ||
+                          reasoning.match(/(\{[\s\S]+\})/);
+        if (jsonMatch) {
+          content = jsonMatch[1] || jsonMatch[0];
+          console.warn('[ai] content empty, extracted from reasoning_content');
+        }
+      }
+
+      if (!content) {
+        const reason = finishReason === 'length'
+          ? 'finish_reason=length (max_tokens 부족 또는 reasoning 과다)'
+          : 'content 비어있음 (finish_reason=' + finishReason + ')';
+        throw new Error('empty|Empty response from AI: ' + reason);
+      }
 
       if (jsonMode) {
         // Robust JSON extraction

@@ -243,6 +243,25 @@ const AI = {
     });
   },
 
+  /** Explain the points Korean learners specifically struggle with in this
+   *  sentence (pronoun reference, perfect-tense timeline, post-modifiers/
+   *  relative clauses, inanimate subject, articles/prepositions). AI picks the
+   *  1-2 most relevant and explains in Korean. */
+  async koreanGrammar(sentence) {
+    const key = this._cacheKey('kg', sentence);
+    return this._cached(key, async () => {
+      const r = await this._call([
+        { role: 'system', content: 'Return JSON: { "points": [ { "type": "...", "ko": "..." } ] }' },
+        { role: 'user', content: `Korean-learner points for: "${sentence}"` }
+      ], `이 문장에서 한국어 모어 학습자가 특히 어려워하는 포인트를 1~2개만 골라 한국어로 설명하라.
+후보 유형(type): 대명사 지시, 완료시제, 후치수식, 관계절, 무생물 주어, 관사, 전치사.
+- 해당되는 게 있을 때만 포함. 예: 대명사 지시면 그 대명사가 가리키는 대상을 짚어라. 완료시제면 시점 관계를 짧게 설명.
+- ko는 초보자도 이해할 친절한 한국어 1~2문장. 문장을 통째로 번역하지 마라. NO spoilers.`);
+      if (r && !r.error && Array.isArray(r.points) && r.points.length) return r;
+      return { error: true, message: '(API 연결을 확인해주세요)' };
+    });
+  },
+
   async sentenceGist(sentence) {
     const key = this._cacheKey('sg', sentence);
     return this._cached(key, async () => {

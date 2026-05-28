@@ -250,6 +250,12 @@ async function getVocabForReview(limit = 10) {
   return due.sort((a, b) => a.nextReview - b.nextReview).slice(0, limit);
 }
 
+// Count cards due for review now (review debt). Used for the sidebar badge and
+// the "review-first" nudge when debt piles up.
+async function countDueReviews() {
+  return await DB.vocabulary.where('nextReview').belowOrEqual(Date.now()).count();
+}
+
 async function updateVocabStatus(id, status) {
   const boxMap = { 'new': 0, 'learning': 1, 'known': 3 };
   const intervalMap = [0, 1, 3, 7]; // days

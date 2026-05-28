@@ -148,9 +148,10 @@ const AI = {
       const body = {
         // deepseek-v4-flash is a reasoning model: it spends large token budgets
         // on hidden reasoning before emitting content. Too low a cap => empty
-        // content (finish_reason "length"). 4000 leaves room for both.
+        // content (finish_reason "length"). reasoning_effort:'low' keeps it concise.
         model: this._model, messages: fullMessages,
-        max_tokens: maxTokens, temperature: 0.3, stream: false
+        max_tokens: maxTokens, temperature: 0.3, stream: false,
+        reasoning_effort: 'low'
       };
       if (jsonMode) body.response_format = { type: 'json_object' };
 
@@ -225,7 +226,7 @@ const AI = {
       const r = await this._call([
         { role: 'system', content: 'Return JSON: { "word": "...", "meaningKo": "...", "partOfSpeech": "..." } — Translate the given word in context of the sentence.' },
         { role: 'user', content: `Korean meaning of "${word}" in: "${sentence}"` }
-      ], 'You are a concise English-Korean dictionary. Give the meaning of the specific word the user asks about, in the context of this sentence.', true, 600);
+      ], 'You are a concise English-Korean dictionary. Give the meaning of the specific word the user asks about, in the context of this sentence.', true, 800);
       if (r && !r.error) return r;
       return { word, meaningKo: '(API 오류)', partOfSpeech: '' };
     });
@@ -237,7 +238,7 @@ const AI = {
       const r = await this._call([
         { role: 'system', content: 'Return JSON: { "structure": "...", "keyPoints": [], "tense": "...", "clauseType": "..." } — Explain grammar in Korean.' },
         { role: 'user', content: `Explain grammar of: "${sentence}"` }
-      ], 'Explain the grammar structure of this sentence in Korean. Focus on one key point. Do NOT translate the sentence.', true, 700);
+      ], 'Explain the grammar structure of this sentence in Korean. Focus on one key point. Do NOT translate the sentence.', true, 800);
       if (r && !r.error) return r;
       return { structure: '(API 오류)', keyPoints: [], tense: '', clauseType: '' };
     });
@@ -267,7 +268,7 @@ const AI = {
     return this._cached(key, async () => {
       const r = await this._call([
         { role: 'user', content: `Short Korean gist (2-3 words) of: "${sentence}"` }
-      ], 'Return JSON: { "gistKo": "..." } — A VERY short Korean gist (2-3 words) of this single sentence. NO spoilers, NO future context. Use present tense only.', true, 500);
+      ], 'Return JSON: { "gistKo": "..." } — A VERY short Korean gist (2-3 words) of this single sentence. NO spoilers, NO future context. Use present tense only.', true, 600);
       if (r && !r.error) return r;
       return { error: true, code: 'unknown', message: '(API 연결을 확인해주세요)' };
     });
@@ -281,7 +282,7 @@ const AI = {
       const r = await this._call([
         { role: 'system', content: 'Return JSON: { "easyEn": "..." }' },
         { role: 'user', content: `Rewrite in simpler English: "${sentence}"` }
-      ], 'Rewrite this single sentence in SIMPLER English (around CEFR A2-B1): common words, shorter clauses, same meaning. Output English only — do NOT translate to Korean. One sentence. NO spoilers, no outside context.', true, 600);
+      ], 'Rewrite this single sentence in SIMPLER English (around CEFR A2-B1): common words, shorter clauses, same meaning. Output English only — do NOT translate to Korean. One sentence. NO spoilers, no outside context.', true, 700);
       if (r && !r.error && r.easyEn) return r;
       return { error: true, code: 'unknown', message: '(API 연결을 확인해주세요)' };
     });
@@ -311,7 +312,7 @@ const AI = {
       const r = await this._call([
         { role: 'system', content: 'Return JSON: { "literalTranslationKo": "...", "naturalTranslationKo": "...", "storyNoteKo": "..." }' },
         { role: 'user', content: `English sentence: "${sentence}"` }
-      ], '이 영어 문장을 한국어로 두 가지로 번역하라. 사용자의 번역과 무관하게 원문만 보고 새로 작성한다. literalTranslationKo = 어순·구문을 살린 직역. naturalTranslationKo = 한국어답게 매끄러운 의역. 두 번역은 반드시 서로 달라야 한다(같은 문장 반복 금지). storyNoteKo = 이 문장의 뉘앙스·장면 의미 한 줄. NO spoilers.', true, 800);
+      ], '이 영어 문장을 한국어로 두 가지로 번역하라. 사용자의 번역과 무관하게 원문만 보고 새로 작성한다. literalTranslationKo = 어순·구문을 살린 직역. naturalTranslationKo = 한국어답게 매끄러운 의역. 두 번역은 반드시 서로 달라야 한다(같은 문장 반복 금지). storyNoteKo = 이 문장의 뉘앙스·장면 의미 한 줄. NO spoilers.', true, 1200);
       if (r && !r.error) return r;
       return { error: true };
     });
@@ -392,7 +393,7 @@ Rules:
 4. usedTargetExpression = true if they reused vocabulary/phrasing from the context sentence.
 Return JSON: { "correctedEn": "...", "notesKo": ["..."], "usedTargetExpression": false }` },
       { role: 'user', content: JSON.stringify({ userText, contextSentence }) }
-    ], 'Gently correct the learner\'s short English. Meaning-first, max 5 fixes, encouraging tone. NO spoilers.', true, 800);
+    ], 'Gently correct the learner\'s short English. Meaning-first, max 5 fixes, encouraging tone. NO spoilers.', true, 1000);
   },
 
   async chapterSummary(text) {
@@ -400,7 +401,7 @@ Return JSON: { "correctedEn": "...", "notesKo": ["..."], "usedTargetExpression":
     return this._cached(key, async () => {
       const r = await this._call([
         { role: 'user', content: text.slice(0, 4000) }
-      ], 'Return JSON: { "summary3lines": "", "characters": [], "keyScenes": [], "expressions": [], "studySentence": "" } — Korean chapter summary. Only summarize the text provided. Do NOT add information from outside this text.', true, 1000);
+      ], 'Return JSON: { "summary3lines": "", "characters": [], "keyScenes": [], "expressions": [], "studySentence": "" } — Korean chapter summary. Only summarize the text provided. Do NOT add information from outside this text.', true, 2000);
       if (r && !r.error) return r;
       return { summary3lines: '(API 오류)', characters: [], keyScenes: [], expressions: [] };
     });
@@ -433,7 +434,7 @@ Return JSON: { "correctedEn": "...", "notesKo": ["..."], "usedTargetExpression":
       const r = await this._call([
         { role: 'system', content: 'Return JSON: { "previouslyKo": "...", "expressions": [ { "en": "...", "ko": "..." } ] }' },
         { role: 'user', content: JSON.stringify({ previousChapter: prev, upcomingChapter: cur }) }
-      ], 'previouslyKo = 이전 챕터(previousChapter)에서 무슨 일이 있었는지 한국어 2~3문장 요약("지난 이야기"). 이전 챕터가 비어 있으면 빈 문자열. expressions = 다가올 챕터(upcomingChapter)에서 눈여겨볼 핵심 영어 표현 3~5개(en=표현, ko=짧은 뜻). 표현은 표면적 어구만 뽑고 줄거리 전개·결말을 누설하지 마라. NO spoilers about upcoming events.', true, 800);
+      ], 'previouslyKo = 이전 챕터(previousChapter)에서 무슨 일이 있었는지 한국어 2~3문장 요약("지난 이야기"). 이전 챕터가 비어 있으면 빈 문자열. expressions = 다가올 챕터(upcomingChapter)에서 눈여겨볼 핵심 영어 표현 3~5개(en=표현, ko=짧은 뜻). 표현은 표면적 어구만 뽑고 줄거리 전개·결말을 누설하지 마라. NO spoilers about upcoming events.', true, 1200);
       if (r && !r.error) return r;
       return { error: true };
     });

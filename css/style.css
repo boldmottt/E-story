@@ -186,7 +186,7 @@ code{font-family:var(--font-mono);font-size:.85em;background:var(--bg4);padding:
 
 /* ===== Quick Menu Popup ===== */
 .quick-menu{position:fixed;z-index:50;background:var(--bg3);border:1px solid var(--bd);border-radius:var(--r-md);box-shadow:var(--shadow);padding:10px;display:none;min-width:320px}
-.quick-menu.open{display:block;animation:fadeUp .15s ease}
+.quick-menu.open{display:block;animation:fadeUp .15s ease;max-height:40vh;overflow-y:auto}
 .quick-menu .qm-sentence{padding:8px 10px;font-size:var(--t-sm);color:var(--tx2);border-bottom:1px solid var(--bd);margin-bottom:8px;line-height:1.55;font-family:var(--font-read)}
 .quick-menu .qm-actions{display:flex;flex-wrap:wrap;gap:5px}
 .quick-menu .qm-btn{padding:8px 13px;border:none;border-radius:var(--r-sm);font-size:var(--t-sm);font-weight:500;cursor:pointer;transition:var(--t);font-family:var(--font);display:flex;align-items:center;gap:5px}
@@ -463,7 +463,7 @@ code{font-family:var(--font-mono);font-size:.85em;background:var(--bg4);padding:
   .upload-area{padding:36px 16px}
   .reader-wrap{padding:16px 0 80px;font-size:1.0625rem}
   .ch-nav-btn{font-size:var(--t-sm);padding:7px 12px}
-  .quick-menu.open{position:fixed;bottom:68px;left:8px;right:8px;width:auto !important;max-width:none}
+  .quick-menu.open{position:fixed;bottom:68px;left:8px;right:8px;width:auto !important;max-width:none;max-height:40vh;overflow-y:auto}
   .study-panel.open{width:100%;max-width:100%;right:0;bottom:60px}
   .settings-group{padding:8px 16px 14px}
   .settings-row{flex-direction:column;align-items:stretch;gap:6px}

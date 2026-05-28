@@ -710,10 +710,30 @@ let App = {
     
     menu.classList.add('open');
     if (rect) {
-      const top = rect.bottom + 8;
-      const left = Math.min(rect.left, window.innerWidth - 340);
-      menu.style.top = top + 'px';
-      menu.style.left = Math.max(10, left) + 'px';
+      // Reset previous positioning
+      menu.style.top = '';
+      menu.style.bottom = '';
+
+      // Measure actual menu dimensions after it becomes visible
+      const menuRect = menu.getBoundingClientRect();
+      const menuW = menuRect.width;
+      const menuH = menuRect.height;
+      const BOTTOM_PAD = 80; // page nav (.page-nav) + breathing room
+
+      // Horizontal: keep within viewport, 10px margin on each side
+      const left = Math.min(Math.max(10, rect.left), window.innerWidth - menuW - 10);
+      menu.style.left = left + 'px';
+
+      // Vertical: flip up if it overflows past the bottom safe zone
+      if (rect.bottom + 8 + menuH > window.innerHeight - BOTTOM_PAD) {
+        // Open above the sentence
+        menu.style.bottom = (window.innerHeight - rect.top + 8) + 'px';
+        menu.style.top = '';
+      } else {
+        // Open below the sentence (default)
+        menu.style.top = (rect.bottom + 8) + 'px';
+        menu.style.bottom = '';
+      }
     }
   },
 

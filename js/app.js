@@ -985,6 +985,7 @@ let App = {
           <button class="btn" id="struct-submit">채점</button>
         </div>
       </div>`;
+    document.getElementById('structure-modal')?.remove();
     document.body.appendChild(overlay);
 
     overlay.querySelectorAll('.struct-role').forEach(b => {
@@ -1487,6 +1488,7 @@ let App = {
           <button class="btn-s" id="vocab-select-cancel">취소</button>
         </div>
       </div>`;
+    document.getElementById('vocab-select-modal')?.remove();
     document.body.appendChild(overlay);
     
     overlay.querySelectorAll('.vocab-select-word').forEach(btn => {

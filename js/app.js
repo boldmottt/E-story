@@ -94,9 +94,16 @@ let App = {
         this.submitFreeQuestion();
         return;
       }
+      const phraseSave = e.target.closest('.qm-phrase-save');
+      if (phraseSave) {
+        e.stopPropagation();
+        this.savePhrase();
+        return;
+      }
       const wordEl = e.target.closest('.qm-word');
       if (wordEl) {
         e.stopPropagation();
+        if (this._phraseMode) { this.togglePhraseWord(wordEl); return; }
         document.querySelectorAll('.qm-word').forEach(w => w.classList.remove('selected'));
         wordEl.classList.add('selected');
         this.selectedWord = wordEl.dataset.word;
@@ -106,6 +113,7 @@ let App = {
       const action = e.target.closest('.qm-btn')?.dataset.action;
       const handlers = {
         word: () => this.wordHint(),
+        phraseMode: () => this.togglePhraseMode(),
         grammar: () => this.grammarHint(),
         gist: () => this.sentenceGist(),
         structure: () => this.openStructure(),
@@ -567,27 +575,30 @@ let App = {
   async onSentenceClick(index, text) {
     this.selectedSentence = { index, text };
     this.selectedWord = null;
-    
+    this._phraseMode = false;
+    this._phraseSel = [];
+
     // Highlight the sentence
     document.querySelectorAll('.sent').forEach(s => s.classList.remove('active'));
     const sentEls = document.querySelectorAll('.sent');
     if (sentEls[index]) sentEls[index].classList.add('active');
-    
+
     const rect = sentEls[index]?.getBoundingClientRect();
     const menu = $('quick-menu');
-    
+
     // Generate word tokens for each word in the sentence
     const words = text.split(' ').filter(w => w.length > 0);
-    const wordHtml = words.map(w => {
+    const wordHtml = words.map((w, wi) => {
       const clean = escapeHtml(w);
-      return `<span class="qm-word word-chip" data-word="${clean}">${clean}</span>`;
+      return `<span class="qm-word word-chip" data-word="${clean}" data-i="${wi}">${clean}</span>`;
     }).join('');
-    
+
     menu.innerHTML = `
       <div class="qm-sentence">${escapeHtml(text)}</div>
       <div class="qm-words-wrap">${wordHtml}</div>
       <div class="qm-actions">
         <button class="qm-btn word" data-action="word">📖 단어 힌트</button>
+        <button class="qm-btn phrase" data-action="phraseMode">🔗 구 저장</button>
         <button class="qm-btn grammar" data-action="grammar">🔍 구문 힌트</button>
         <button class="qm-btn structure" data-action="structure">🏷️ 구조 분석</button>
         <button class="qm-btn chunk" data-action="chunkReading">✂️ 끊어 읽기</button>
@@ -607,6 +618,59 @@ let App = {
       menu.style.top = top + 'px';
       menu.style.left = Math.max(10, left) + 'px';
     }
+  },
+
+  // 구(句) 저장 모드: 단어 칩을 여러 개 골라 "be reluctant to" 같은 표현을 저장.
+  togglePhraseMode() {
+    this._phraseMode = !this._phraseMode;
+    this._phraseSel = [];
+    document.querySelectorAll('.qm-word').forEach(w => w.classList.remove('selected'));
+    const result = $('hint-result');
+    if (!result) return;
+    if (!this._phraseMode) { result.style.display = 'none'; result.innerHTML = ''; return; }
+    result.style.display = 'block';
+    result.innerHTML = `
+      <div class="qm-phrase-hint">단어를 순서대로 눌러 표현을 만드세요.</div>
+      <div class="qm-phrase-preview" id="qm-phrase-preview">—</div>
+      <button class="qm-phrase-save" disabled>🔗 이 표현 저장</button>
+    `;
+  },
+
+  togglePhraseWord(el) {
+    el.classList.toggle('selected');
+    this._refreshPhrasePreview();
+  },
+
+  _refreshPhrasePreview() {
+    const sel = [...document.querySelectorAll('.qm-word.selected')]
+      .map(w => ({ i: parseInt(w.dataset.i), word: w.dataset.word }))
+      .sort((a, b) => a.i - b.i);
+    this._phraseSel = sel;
+    const phrase = sel.map(s => s.word).join(' ').replace(/[",.;:!?]+$/g, '').trim();
+    const prev = $('qm-phrase-preview');
+    const btn = document.querySelector('.qm-phrase-save');
+    if (prev) prev.textContent = phrase || '—';
+    if (btn) btn.disabled = sel.length < 2;
+  },
+
+  async savePhrase() {
+    const phrase = this._phraseSel.map(s => s.word).join(' ').replace(/[",.;:!?]+$/g, '').trim();
+    if (!phrase || this._phraseSel.length < 2) return;
+    const btn = document.querySelector('.qm-phrase-save');
+    if (btn) { btn.disabled = true; btn.textContent = '뜻 불러오는 중...'; }
+    const hint = await AI.wordHint(phrase, this.selectedSentence.text);
+    const meaning = (hint && hint.meaningKo) || '';
+    // contextSentence = the full sentence → 생산형 복습에서 빈칸 cloze가 동작.
+    const r = await addWord(phrase, meaning, this.selectedSentence.text, this.currentBook?.id, this.selectedSentence?.index, '');
+    if (r && r.blocked) {
+      this.showToast(`오늘 새 카드 한도(${r.cap}개)에 도달했어요. 내일 다시 추가할 수 있어요.`, 'info');
+      if (btn) { btn.textContent = '🔗 이 표현 저장'; btn.disabled = false; }
+      return;
+    }
+    this.showToast(`"${phrase}" 표현 저장됨!`, 'success');
+    this.updateQueueBadge();
+    Sync.scheduleSync();
+    if (btn) btn.textContent = '✅ 저장됨';
   },
 
   closeQuickMenu() {

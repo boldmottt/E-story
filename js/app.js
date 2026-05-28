@@ -359,6 +359,7 @@ let App = {
 
     this.renderReader();
     this.loadChapterSummary();
+    this.loadWarmup();
     this.ensureDifficulty();
     this._startReadingSession();
 
@@ -425,6 +426,7 @@ let App = {
         <div class="ch-title">${escapeHtml(this.currentChunk.title)}</div>
         <div class="book-title">${escapeHtml(this.currentBook.title)}</div>
       </div>
+      <div id="chapter-warmup" class="chapter-warmup" hidden></div>
       <div id="chapter-summary" class="chapter-summary" hidden></div>
       <div class="ch-nav">
         <button class="topbar-btn ch-nav-btn" data-dir="prev"${prevDisabled ? ' disabled' : ''}>◀ 이전</button>
@@ -514,6 +516,7 @@ let App = {
       this.currentSentences = sents;
       this.renderReader();
       this.loadChapterSummary();
+      this.loadWarmup();
       window.scrollTo({ top: 0, behavior: 'instant' });
     });
     
@@ -1125,6 +1128,37 @@ let App = {
     } else {
       csDiv.hidden = true;
     }
+  },
+
+  // 읽기 전 예열: "지난 이야기"(이전 챕터 요약) + 다가올 챕터의 핵심 표현.
+  // 데모/오류 시 조용히 숨긴다. 사용자가 접으면 그 챕터에서는 다시 안 뜬다.
+  async loadWarmup() {
+    const el = $('chapter-warmup');
+    if (!el) return;
+    el.hidden = true;
+    const idx = this.currentSelectedChunkIndex;
+    const cur = this.currentChunk?.content || '';
+    if (!cur || cur.length < 50) return;
+    if (this._warmupDismissed === `${this.currentBook?.id}:${idx}`) return;
+    const prev = idx > 0 ? (this.currentChunks[idx - 1]?.content || '') : '';
+    el.hidden = false;
+    el.innerHTML = '🔄 예열 불러오는 중...';
+    const r = await AI.warmup(prev, cur);
+    if (!r || r.error || (!r.previouslyKo && !(r.expressions?.length))) {
+      el.hidden = true;
+      return;
+    }
+    const exprs = Array.isArray(r.expressions) ? r.expressions : [];
+    el.innerHTML = `
+      <button class="warmup-close" title="접기" aria-label="접기">✕</button>
+      <div class="warmup-title">🔥 읽기 전 예열</div>
+      ${r.previouslyKo ? `<div class="warmup-prev"><b>지난 이야기</b> · ${escapeHtml(r.previouslyKo)}</div>` : ''}
+      ${exprs.length ? `<div class="warmup-expr"><b>오늘의 표현</b><ul>${exprs.map(e => `<li><span class="we-en">${escapeHtml(e.en || '')}</span> <span class="we-ko">${escapeHtml(e.ko || '')}</span></li>`).join('')}</ul></div>` : ''}
+    `;
+    el.querySelector('.warmup-close')?.addEventListener('click', () => {
+      el.hidden = true;
+      this._warmupDismissed = `${this.currentBook?.id}:${idx}`;
+    });
   },
 
   _offerVocabSave() {

@@ -372,6 +372,23 @@ Return JSON: { "correctedEn": "...", "notesKo": ["..."], "usedTargetExpression":
     });
   },
 
+  /** Pre-reading warm-up. "Previously" = Korean recap of the PREVIOUS chunk
+   *  (already read, so no spoiler). "expressions" = key phrases to watch for
+   *  in the upcoming chunk (surface phrases only, no plot reveal). */
+  async warmup(prevText, currentText) {
+    const prev = (prevText || '').slice(0, 3000);
+    const cur = (currentText || '').slice(0, 3000);
+    const key = this._cacheKey('wu', prev.slice(0, 200), cur.slice(0, 200));
+    return this._cached(key, async () => {
+      const r = await this._call([
+        { role: 'system', content: 'Return JSON: { "previouslyKo": "...", "expressions": [ { "en": "...", "ko": "..." } ] }' },
+        { role: 'user', content: JSON.stringify({ previousChapter: prev, upcomingChapter: cur }) }
+      ], 'previouslyKo = 이전 챕터(previousChapter)에서 무슨 일이 있었는지 한국어 2~3문장 요약("지난 이야기"). 이전 챕터가 비어 있으면 빈 문자열. expressions = 다가올 챕터(upcomingChapter)에서 눈여겨볼 핵심 영어 표현 3~5개(en=표현, ko=짧은 뜻). 표현은 표면적 어구만 뽑고 줄거리 전개·결말을 누설하지 마라. NO spoilers about upcoming events.');
+      if (r && !r.error) return r;
+      return { error: true };
+    });
+  },
+
   /** Estimate reading difficulty from a SAMPLE of the book (not the whole text).
    *  Returns CEFR level + a green/yellow/red suitability band. */
   async analyzeDifficulty(sampleText) {
@@ -409,6 +426,9 @@ Return JSON: { "correctedEn": "...", "notesKo": ["..."], "usedTargetExpression":
     }
     if (lastMsg.includes('simpler English')) {
       return { easyEn: '⚙️ Set an API key in Settings to use this.' };
+    }
+    if (lastMsg.includes('upcomingChapter')) {
+      return { error: true };
     }
     return { gistKo: '⚙️ 설정에서 API 키를 등록해주세요.' };
   }

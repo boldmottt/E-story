@@ -285,6 +285,22 @@ async function getQueueCount() {
   return await DB.studyQueue.where('status').equals('pending').count();
 }
 
+/* ===== Highlights (마음에 든 문장 저장) ===== */
+async function addHighlight(bookId, sentenceId, text, bookTitle) {
+  return await DB.highlights.add({
+    bookId, sentenceId, text, bookTitle: bookTitle || '',
+    note: '', tags: [], createdAt: Date.now(), updatedAt: Date.now()
+  });
+}
+
+async function getHighlights() {
+  return await DB.highlights.reverse().sortBy('createdAt');
+}
+
+async function deleteHighlight(id) {
+  await DB.highlights.delete(id);
+}
+
 /* ===== Reading Sessions (help-dependency logging) =====
  * North Star: 도움 의존도 감소. We log how much help the reader leans on
  * (dictionary lookups, Korean translations, hint-ladder steps) per session so

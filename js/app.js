@@ -440,6 +440,10 @@ let App = {
       </div>
       <div id="chapter-warmup" class="chapter-warmup" hidden></div>
       <div id="chapter-summary" class="chapter-summary" hidden></div>
+      <div class="expr-reco-bar">
+        <button class="topbar-btn" id="expr-reco-btn">💡 이 챕터에서 학습할 표현 추천</button>
+      </div>
+      <div id="expr-reco" class="expr-reco" hidden></div>
       <div class="ch-nav">
         <button class="topbar-btn ch-nav-btn" data-dir="prev"${prevDisabled ? ' disabled' : ''}>◀ 이전</button>
         <span class="ch-label">${this.currentSelectedChunkIndex + 1} / ${this.currentChunks.length}</span>
@@ -481,7 +485,11 @@ let App = {
         if (e.target.closest('#tts-play')) { this.startTTS(); return; }
         if (e.target.closest('#tts-pause')) { TTS.isSpeaking() ? TTS.pause() : TTS.resume(); return; }
         if (e.target.closest('#tts-stop')) { TTS.stop(); return; }
-        
+
+        if (e.target.closest('#expr-reco-btn')) { this.loadExprReco(); return; }
+        const addBtn = e.target.closest('.er-add');
+        if (addBtn) { this.saveExprFromReco(addBtn); return; }
+
         const sentEl = e.target.closest('.sent');
         if (sentEl) {
           const index = parseInt(sentEl.dataset.index);
@@ -1213,6 +1221,40 @@ let App = {
     } else {
       csDiv.hidden = true;
     }
+  },
+
+  // AI가 이 챕터에서 학습 가치 높은 표현 3~5개만 골라 추천한다(PRD 8.8).
+  // 각 항목은 단어장 추가 버튼으로 바로 카드화(카드 한도·중복 처리 그대로).
+  async loadExprReco() {
+    const box = $('expr-reco');
+    if (!box) return;
+    box.hidden = false;
+    box.innerHTML = '🔄 학습할 표현 고르는 중...';
+    const r = await AI.selectExpressions(this.currentChunk?.content || '');
+    if (!r || r.error || !(r.items?.length)) {
+      box.innerHTML = '<div class="er-empty">추천을 불러올 수 없어요. (설정에서 AI 키를 확인하세요)</div>';
+      return;
+    }
+    box.innerHTML = `<div class="er-title">💡 학습할 표현 추천</div>` + r.items.map(it => `
+      <div class="er-item">
+        <div class="er-main"><span class="er-en">${escapeHtml(it.en || '')}</span> <span class="er-ko">${escapeHtml(it.ko || '')}</span></div>
+        ${it.why ? `<div class="er-why">${escapeHtml(it.why)}</div>` : ''}
+        <button class="er-add" data-en="${escapeHtml(it.en || '')}" data-ko="${escapeHtml(it.ko || '')}">➕ 단어장</button>
+      </div>`).join('');
+  },
+
+  async saveExprFromReco(btn) {
+    const en = btn.dataset.en, ko = btn.dataset.ko;
+    if (!en) return;
+    const r = await addWord(en, ko || '', '', this.currentBook?.id, 0, '');
+    if (r && r.blocked) {
+      this.showToast(`오늘 새 카드 한도(${r.cap}개)에 도달했어요. 내일 다시 추가할 수 있어요.`, 'info');
+      return;
+    }
+    btn.textContent = '✅ 추가됨';
+    btn.disabled = true;
+    this.updateQueueBadge();
+    Sync.scheduleSync();
   },
 
   // 읽기 전 예열: "지난 이야기"(이전 챕터 요약) + 다가올 챕터의 핵심 표현.

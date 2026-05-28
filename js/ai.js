@@ -268,6 +268,21 @@ const AI = {
     });
   },
 
+  /** Break the sentence into sense groups in ENGLISH order, each with a tiny
+   *  Korean gloss. Trains Korean readers to parse English left-to-right
+   *  (후치수식·관계절) instead of reordering into Korean. */
+  async chunkReading(sentence) {
+    const key = this._cacheKey('cr', sentence);
+    return this._cached(key, async () => {
+      const r = await this._call([
+        { role: 'system', content: 'Return JSON: { "groups": [ { "en": "...", "ko": "..." } ] }' },
+        { role: 'user', content: `Sentence: "${sentence}"` }
+      ], '이 영어 문장을 의미 단위(sense group)로 끊어라. groups 배열에 원문 어순 그대로 각 덩어리를 넣는다. en = 그 영어 덩어리(원문 단어 그대로), ko = 그 덩어리의 아주 짧은 한국어 뜻. 한국어 어순으로 재배열하지 말고 영어 순서를 유지한다. 보통 3~7개 덩어리. NO spoilers, 문장 밖 맥락 금지.');
+      if (r && !r.error && Array.isArray(r.groups) && r.groups.length) return r;
+      return { error: true, code: 'unknown', message: '(API 연결을 확인해주세요)' };
+    });
+  },
+
   /** Model's OWN Korean translations of the English sentence, independent of
    *  the user's attempt — used for the final comparison view so 직역/의역이
    *  사용자 입력을 베끼지 않고 서로 구분된다. */
@@ -429,6 +444,9 @@ Return JSON: { "correctedEn": "...", "notesKo": ["..."], "usedTargetExpression":
     }
     if (lastMsg.includes('upcomingChapter')) {
       return { error: true };
+    }
+    if (lastMsg.startsWith('Sentence:')) {
+      return { groups: [{ en: '⚙️', ko: '설정에서 API 키를 등록해주세요.' }] };
     }
     return { gistKo: '⚙️ 설정에서 API 키를 등록해주세요.' };
   }

@@ -428,6 +428,7 @@ async function getSettings() {
       aiModel: isLocal ? 'deepseek-v4-flash' : 'gpt-4o-mini',
       aiKey: '', aiKeyMode: 'session',
       apiKeyStorageMode: 'session',
+      fastMode: true,
       dailyCardCap: 5,
       dailyMinutes: 20,
       lastOpenedBookId: null, lastView: 'bookshelf'

@@ -16,6 +16,10 @@ const AI = {
   _model: AI_DEFAULT_MODEL,
   _mode: 'demo',
   _storageMode: 'session',
+  // Fast mode: ask the model to spend little/no budget on hidden reasoning.
+  // Sent as OpenAI-compatible `reasoning_effort`. Toggle off if the endpoint
+  // rejects the param.
+  _fastMode: true,
 
   // Reading context for No-spoiler
   _readingContext: { bookTitle: '', chunkIndex: 0, totalChunks: 0 },
@@ -66,6 +70,7 @@ const AI = {
       // Use settings for baseUrl/model if configured
       if (s.aiBaseUrl) this._baseUrl = s.aiBaseUrl;
       if (s.aiModel) this._model = s.aiModel;
+      if (s.fastMode !== undefined) this._fastMode = !!s.fastMode;
     } catch (e) {
       console.warn('AI.init: settings load failed, using defaults', e);
     }
@@ -89,6 +94,7 @@ const AI = {
 
   setBaseUrl(url) { if (url) this._baseUrl = url; },
   setModel(model) { if (model) this._model = model; },
+  setFastMode(on) { this._fastMode = !!on; },
 
   /** Store reading context for No-spoiler enforcement */
   setReadingContext(bookTitle, chunkIndex, totalChunks) {
@@ -152,6 +158,9 @@ const AI = {
         model: this._model, messages: fullMessages,
         max_tokens: maxTokens, temperature: 0.3, stream: false
       };
+      // Fast mode: minimise hidden reasoning for snappier replies. Harmless on
+      // endpoints that ignore the field; turn off in Settings if one rejects it.
+      if (this._fastMode) body.reasoning_effort = 'low';
       if (jsonMode) body.response_format = { type: 'json_object' };
 
       const headers = { 'Content-Type': 'application/json' };

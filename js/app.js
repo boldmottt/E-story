@@ -950,7 +950,49 @@ let App = {
       </div>
       <div id="buddy-response" class="buddy-response"></div>
     `;
+    this._renderOutputPractice();
     this._offerVocabSave();
+  },
+
+  // 읽은 문장을 바탕으로 짧게 영어로 써보고(요약·표현 활용) AI에게 부드러운
+  // 교정을 받는 출력 연습. 인풋(해석) 다음의 아웃풋 훈련 단계.
+  _renderOutputPractice() {
+    const buddy = $('study-buddy');
+    if (!buddy) return;
+    const block = document.createElement('div');
+    block.className = 'output-practice';
+    block.innerHTML = `
+      <div class="op-label">✏️ 오늘의 영작 — 방금 읽은 내용을 영어 1~2문장으로</div>
+      <textarea id="op-input" class="op-input" rows="3" placeholder="배운 표현을 써서 영어로 짧게 써보세요. 완벽하지 않아도 돼요."></textarea>
+      <button class="op-submit" id="op-submit">교정 받기</button>
+      <div id="op-result" class="op-result"></div>
+    `;
+    buddy.appendChild(block);
+    block.querySelector('#op-submit').addEventListener('click', () => this.submitOutput());
+  },
+
+  async submitOutput() {
+    const ta = $('op-input');
+    const out = $('op-result');
+    if (!ta || !out) return;
+    const text = ta.value.trim();
+    if (!text) { ta.focus(); return; }
+    const btn = $('op-submit');
+    if (btn) btn.disabled = true;
+    out.style.display = 'block';
+    out.textContent = '교정 중...';
+    const data = await AI.correctOutput(text, this.selectedSentence?.text || '');
+    if (btn) btn.disabled = false;
+    if (!data || data.error) {
+      out.textContent = '⚠️ 교정을 불러올 수 없습니다.';
+      return;
+    }
+    const notes = Array.isArray(data.notesKo) ? data.notesKo : [];
+    out.innerHTML = `
+      ${data.correctedEn ? `<div class="op-corrected"><span class="op-tag">교정</span> ${escapeHtml(data.correctedEn)}</div>` : ''}
+      ${notes.length ? `<ul class="op-notes">${notes.map(n => `<li>${escapeHtml(n)}</li>`).join('')}</ul>` : ''}
+      ${data.usedTargetExpression ? `<div class="op-bonus">🎯 배운 표현을 활용했어요!</div>` : ''}
+    `;
   },
 
   // H3: User chooses to continue

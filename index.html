@@ -139,6 +139,11 @@
           <option value="persist">브라우저에 저장</option>
         </select>
       </div>
+      <div class="settings-row">
+        <label>빠른 응답 (추론 최소화)</label>
+        <input type="checkbox" id="settings-fast-mode">
+      </div>
+      <div class="settings-note">켜면 모델의 숨은 추론을 최소화해 답변이 빨라집니다(<code>reasoning_effort: low</code>). 일부 엔드포인트가 이 옵션을 거부해 AI 오류가 나면 끄세요.</div>
       <div class="settings-note">• <b>로컬(serve.py)</b>: 기본값 <code>/api/zen/go/v1</code>로 자동 동작, 키 입력 불필요(서버 <code>OPENCODE_API_KEY</code> 사용).<br>• <b>GitHub Pages 등 정적 호스팅</b>: Cloudflare Worker 프록시를 배포하고(<code>cloudflare-worker/</code> 참고) URL을 <code>https://&lt;워커&gt;.workers.dev/api/zen/go/v1</code>로 지정하면 키 없이 동작.<br>• 직접 OpenAI 호환 API를 쓰려면 전체 URL + 본인 키를 입력하세요. 키 없고 프록시도 없으면 데모 모드.</div>
     </div>
 

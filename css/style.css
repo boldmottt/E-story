@@ -336,6 +336,13 @@ code{font-family:var(--font-mono);font-size:.85em;background:var(--bg4);padding:
 .history-item .hi-user{font-size:var(--t-sm);color:var(--a2);margin-bottom:5px}
 .history-item .hi-fb{font-size:var(--t-sm);color:var(--tx2);line-height:1.5}
 .history-item .hi-meta{font-size:var(--t-meta);color:var(--tx3);margin-top:8px;display:flex;gap:8px}
+.qm-btn.highlight{background:rgba(179,129,43,.16);color:var(--a2)}
+.highlight-list{display:flex;flex-direction:column;gap:12px}
+.highlight-item{position:relative;background:var(--bg3);border:1px solid var(--bd);border-left:3px solid var(--a2);border-radius:var(--r-md);padding:16px;box-shadow:var(--shadow-sm)}
+.highlight-item .hl-text{font-family:var(--font-read);font-size:var(--t-base);color:var(--tx);line-height:1.6;padding-right:24px}
+.highlight-item .hl-meta{font-size:var(--t-meta);color:var(--tx3);margin-top:8px;display:flex;gap:8px;justify-content:space-between}
+.hl-del{position:absolute;top:10px;right:10px;width:24px;height:24px;border:none;border-radius:50%;background:var(--bg4);color:var(--tx3);font-size:12px;line-height:1;cursor:pointer}
+.hl-del:hover{background:var(--a3);color:var(--on-accent)}
 
 /* ===== Report ===== */
 .report-note{font-size:var(--t-sm);color:var(--tx2);line-height:1.6;margin-bottom:14px}

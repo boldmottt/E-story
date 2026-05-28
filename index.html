@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,500;0,7..72,600;1,7..72,400;1,7..72,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=1.15">
+<link rel="stylesheet" href="css/style.css?v=1.16">
 </head>
 <body>
 
@@ -26,6 +26,9 @@
     <div class="nav-item" data-view="queue">
       <span class="ico">⏰</span><span>나중에 공부</span>
       <span id="queue-badge" class="queue-badge"></span>
+    </div>
+    <div class="nav-item" data-view="highlights">
+      <span class="ico">⭐</span><span>하이라이트</span>
     </div>
     <div class="nav-item" data-view="history">
       <span class="ico">📝</span><span>피드백 이력</span>
@@ -90,6 +93,12 @@
       <button class="btn-s" id="queue-clear">모두 완료</button>
     </div>
     <div class="queue-list" id="queue-list"></div>
+  </div>
+
+  <!-- ===== Highlights Page ===== -->
+  <div class="content" id="highlights-page">
+    <h2 class="page-heading">⭐ 하이라이트</h2>
+    <div class="highlight-list" id="highlight-list"></div>
   </div>
 
   <!-- ===== History Page ===== -->
@@ -220,12 +229,12 @@
 </div>
 
 <!-- ===== Scripts (cache-busting: bump v=1.1 on deploy to force fresh files) ===== -->
-<script src="vendor/dexie.js?v=1.15"></script>
-<script src="js/db.js?v=1.15"></script>
-<script src="js/ai.js?v=1.15"></script>
-<script src="js/tts.js?v=1.15"></script>
-<script src="js/sync.js?v=1.15"></script>
-<script src="js/app.js?v=1.15"></script>
+<script src="vendor/dexie.js?v=1.16"></script>
+<script src="js/db.js?v=1.16"></script>
+<script src="js/ai.js?v=1.16"></script>
+<script src="js/tts.js?v=1.16"></script>
+<script src="js/sync.js?v=1.16"></script>
+<script src="js/app.js?v=1.16"></script>
 
 </body>
 </html>

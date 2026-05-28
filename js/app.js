@@ -113,6 +113,7 @@ let App = {
         easyEnglish: () => this.easyEnglish(),
         ask: () => this.askFreeQuestion(),
         study: () => this.openStudy(),
+        highlight: () => this.saveHighlight(),
         queue: () => this.queueLater()
       };
       handlers[action]?.();
@@ -205,6 +206,7 @@ let App = {
     const renderers = {
       vocabulary: () => this.renderVocabulary(),
       queue: () => this.renderQueue(),
+      highlights: () => this.renderHighlights(),
       history: () => this.renderHistory(),
       report: () => this.renderReport(),
       settings: () => this.loadSettings()
@@ -223,6 +225,7 @@ let App = {
       reader: this.currentBook?.title || '읽기',
       vocabulary: '📖 단어장',
       queue: '⏰ 나중에 공부',
+      highlights: '⭐ 하이라이트',
       history: '📝 피드백 이력',
       report: '📊 리포트',
       settings: '⚙️ 설정'
@@ -587,6 +590,7 @@ let App = {
         <button class="qm-btn gist" data-action="gist">📋 문장 요지</button>
         <button class="qm-btn ask" data-action="ask">💬 자유 질문</button>
         <button class="qm-btn study" data-action="study">✍️ 해석해보기</button>
+        <button class="qm-btn highlight" data-action="highlight">⭐ 하이라이트</button>
         <button class="qm-btn queue" data-action="queue">⏰ 나중에</button>
       </div>
       <div id="hint-result" class="qm-hint-result"></div>
@@ -1252,6 +1256,36 @@ let App = {
     this.showToast('📌 나중에 공부할 문장으로 저장됨!', 'info');
     await this.updateQueueBadge();
     Sync.scheduleSync();
+  },
+
+  async saveHighlight() {
+    this.closeQuickMenu();
+    if (!this.selectedSentence?.text) return;
+    await addHighlight(this.currentBook?.id, this.selectedSentence.index, this.selectedSentence.text, this.currentBook?.title);
+    this.showToast('⭐ 하이라이트에 저장됨!', 'success');
+    Sync.scheduleSync();
+  },
+
+  async renderHighlights() {
+    const list = $('highlight-list');
+    if (!list) return;
+    const items = await getHighlights();
+    if (!items.length) {
+      list.innerHTML = '<div class="review-empty"><div class="icon">⭐</div>아직 하이라이트가 없습니다.<br>문장을 누르고 ⭐ 하이라이트로 마음에 드는 문장을 저장하세요.</div>';
+      return;
+    }
+    list.innerHTML = items.map(h => `
+      <div class="highlight-item">
+        <button class="hl-del" data-id="${h.id}" title="삭제" aria-label="삭제">✕</button>
+        <div class="hl-text">${escapeHtml(h.text || '')}</div>
+        <div class="hl-meta"><span>${escapeHtml(h.bookTitle || '')}</span><span>${new Date(h.createdAt).toLocaleDateString()}</span></div>
+      </div>`).join('');
+    list.querySelectorAll('.hl-del').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        await deleteHighlight(parseInt(btn.dataset.id));
+        this.renderHighlights();
+      });
+    });
   },
 
   async renderQueue() {

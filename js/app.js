@@ -376,6 +376,7 @@ let App = {
     this.ensureDifficulty();
     this._startReadingSession();
     this._maybeCoachToast();
+    this._maybeReviewNudge();
 
     // Restore scroll position
     if (this.currentBook.currentOffset) {
@@ -1469,6 +1470,27 @@ let App = {
     if (badge) {
       badge.textContent = count > 0 ? count : '';
       badge.style.display = count > 0 ? 'inline' : 'none';
+    }
+    this.updateReviewBadge();
+  },
+
+  // 복습 부채: 복습 예정(마감) 카드 수를 단어장 탭 배지로 보여준다.
+  async updateReviewBadge() {
+    const due = await countDueReviews();
+    const badge = $('review-badge');
+    if (badge) {
+      badge.textContent = due > 0 ? due : '';
+      badge.style.display = due > 0 ? 'inline' : 'none';
+    }
+  },
+
+  // 복습이 많이 밀렸으면 책을 열 때 한 번만 "복습 먼저" 넛지를 띄운다.
+  async _maybeReviewNudge() {
+    if (this._reviewNudgeShown) return;
+    this._reviewNudgeShown = true;
+    const due = await countDueReviews();
+    if (due >= 30) {
+      this.showToast(`📖 복습이 ${due}개 밀렸어요. 오늘은 새 카드보다 복습부터 해볼까요? (단어장 → 복습 시작)`, 'info');
     }
   },
 

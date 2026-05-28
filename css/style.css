@@ -68,6 +68,7 @@ code{font-family:var(--font-mono);font-size:.85em;background:var(--bg4);padding:
 .nav-item .ico{font-size:1rem;width:20px;text-align:center;opacity:.72}
 .sidebar-foot{padding:14px 16px;border-top:1px solid var(--bd);font-size:var(--t-meta);color:var(--tx3);font-style:italic;font-family:var(--font-read)}
 .queue-badge{display:none;margin-left:auto;background:var(--a3);color:var(--on-accent);padding:1px 7px;border-radius:9px;font-size:var(--t-meta);font-weight:700}
+.review-badge{background:var(--a2)}
 
 /* ===== Utilities ===== */
 .page-heading{font-family:var(--font-read);font-size:var(--t-xl);font-weight:600;letter-spacing:-.02em;margin-bottom:20px;color:var(--tx)}

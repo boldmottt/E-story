@@ -94,9 +94,16 @@ let App = {
         this.submitFreeQuestion();
         return;
       }
+      const phraseSave = e.target.closest('.qm-phrase-save');
+      if (phraseSave) {
+        e.stopPropagation();
+        this.savePhrase();
+        return;
+      }
       const wordEl = e.target.closest('.qm-word');
       if (wordEl) {
         e.stopPropagation();
+        if (this._phraseMode) { this.togglePhraseWord(wordEl); return; }
         document.querySelectorAll('.qm-word').forEach(w => w.classList.remove('selected'));
         wordEl.classList.add('selected');
         this.selectedWord = wordEl.dataset.word;
@@ -106,6 +113,7 @@ let App = {
       const action = e.target.closest('.qm-btn')?.dataset.action;
       const handlers = {
         word: () => this.wordHint(),
+        phraseMode: () => this.togglePhraseMode(),
         grammar: () => this.grammarHint(),
         gist: () => this.sentenceGist(),
         structure: () => this.openStructure(),
@@ -364,6 +372,7 @@ let App = {
     this.renderReader();
     this.loadChapterSummary();
     this.loadWarmup();
+    this.loadDailyGoal();
     this.ensureDifficulty();
     this._startReadingSession();
     this._maybeCoachToast();
@@ -431,8 +440,13 @@ let App = {
         <div class="ch-title">${escapeHtml(this.currentChunk.title)}</div>
         <div class="book-title">${escapeHtml(this.currentBook.title)}</div>
       </div>
+      <div id="daily-goal" class="daily-goal" hidden></div>
       <div id="chapter-warmup" class="chapter-warmup" hidden></div>
       <div id="chapter-summary" class="chapter-summary" hidden></div>
+      <div class="expr-reco-bar">
+        <button class="topbar-btn" id="expr-reco-btn">💡 이 챕터에서 학습할 표현 추천</button>
+      </div>
+      <div id="expr-reco" class="expr-reco" hidden></div>
       <div class="ch-nav">
         <button class="topbar-btn ch-nav-btn" data-dir="prev"${prevDisabled ? ' disabled' : ''}>◀ 이전</button>
         <span class="ch-label">${this.currentSelectedChunkIndex + 1} / ${this.currentChunks.length}</span>
@@ -474,7 +488,11 @@ let App = {
         if (e.target.closest('#tts-play')) { this.startTTS(); return; }
         if (e.target.closest('#tts-pause')) { TTS.isSpeaking() ? TTS.pause() : TTS.resume(); return; }
         if (e.target.closest('#tts-stop')) { TTS.stop(); return; }
-        
+
+        if (e.target.closest('#expr-reco-btn')) { this.loadExprReco(); return; }
+        const addBtn = e.target.closest('.er-add');
+        if (addBtn) { this.saveExprFromReco(addBtn); return; }
+
         const sentEl = e.target.closest('.sent');
         if (sentEl) {
           const index = parseInt(sentEl.dataset.index);
@@ -522,6 +540,7 @@ let App = {
       this.renderReader();
       this.loadChapterSummary();
       this.loadWarmup();
+      this.loadDailyGoal();
       window.scrollTo({ top: 0, behavior: 'instant' });
     });
     
@@ -560,27 +579,30 @@ let App = {
   async onSentenceClick(index, text) {
     this.selectedSentence = { index, text };
     this.selectedWord = null;
-    
+    this._phraseMode = false;
+    this._phraseSel = [];
+
     // Highlight the sentence
     document.querySelectorAll('.sent').forEach(s => s.classList.remove('active'));
     const sentEls = document.querySelectorAll('.sent');
     if (sentEls[index]) sentEls[index].classList.add('active');
-    
+
     const rect = sentEls[index]?.getBoundingClientRect();
     const menu = $('quick-menu');
-    
+
     // Generate word tokens for each word in the sentence
     const words = text.split(' ').filter(w => w.length > 0);
-    const wordHtml = words.map(w => {
+    const wordHtml = words.map((w, wi) => {
       const clean = escapeHtml(w);
-      return `<span class="qm-word word-chip" data-word="${clean}">${clean}</span>`;
+      return `<span class="qm-word word-chip" data-word="${clean}" data-i="${wi}">${clean}</span>`;
     }).join('');
-    
+
     menu.innerHTML = `
       <div class="qm-sentence">${escapeHtml(text)}</div>
       <div class="qm-words-wrap">${wordHtml}</div>
       <div class="qm-actions">
         <button class="qm-btn word" data-action="word">📖 단어 힌트</button>
+        <button class="qm-btn phrase" data-action="phraseMode">🔗 구 저장</button>
         <button class="qm-btn grammar" data-action="grammar">🔍 구문 힌트</button>
         <button class="qm-btn structure" data-action="structure">🏷️ 구조 분석</button>
         <button class="qm-btn kgram" data-action="koreanGrammar">🇰🇷 한국인 포인트</button>
@@ -601,6 +623,59 @@ let App = {
       menu.style.top = top + 'px';
       menu.style.left = Math.max(10, left) + 'px';
     }
+  },
+
+  // 구(句) 저장 모드: 단어 칩을 여러 개 골라 "be reluctant to" 같은 표현을 저장.
+  togglePhraseMode() {
+    this._phraseMode = !this._phraseMode;
+    this._phraseSel = [];
+    document.querySelectorAll('.qm-word').forEach(w => w.classList.remove('selected'));
+    const result = $('hint-result');
+    if (!result) return;
+    if (!this._phraseMode) { result.style.display = 'none'; result.innerHTML = ''; return; }
+    result.style.display = 'block';
+    result.innerHTML = `
+      <div class="qm-phrase-hint">단어를 순서대로 눌러 표현을 만드세요.</div>
+      <div class="qm-phrase-preview" id="qm-phrase-preview">—</div>
+      <button class="qm-phrase-save" disabled>🔗 이 표현 저장</button>
+    `;
+  },
+
+  togglePhraseWord(el) {
+    el.classList.toggle('selected');
+    this._refreshPhrasePreview();
+  },
+
+  _refreshPhrasePreview() {
+    const sel = [...document.querySelectorAll('.qm-word.selected')]
+      .map(w => ({ i: parseInt(w.dataset.i), word: w.dataset.word }))
+      .sort((a, b) => a.i - b.i);
+    this._phraseSel = sel;
+    const phrase = sel.map(s => s.word).join(' ').replace(/[",.;:!?]+$/g, '').trim();
+    const prev = $('qm-phrase-preview');
+    const btn = document.querySelector('.qm-phrase-save');
+    if (prev) prev.textContent = phrase || '—';
+    if (btn) btn.disabled = sel.length < 2;
+  },
+
+  async savePhrase() {
+    const phrase = this._phraseSel.map(s => s.word).join(' ').replace(/[",.;:!?]+$/g, '').trim();
+    if (!phrase || this._phraseSel.length < 2) return;
+    const btn = document.querySelector('.qm-phrase-save');
+    if (btn) { btn.disabled = true; btn.textContent = '뜻 불러오는 중...'; }
+    const hint = await AI.wordHint(phrase, this.selectedSentence.text);
+    const meaning = (hint && hint.meaningKo) || '';
+    // contextSentence = the full sentence → 생산형 복습에서 빈칸 cloze가 동작.
+    const r = await addWord(phrase, meaning, this.selectedSentence.text, this.currentBook?.id, this.selectedSentence?.index, '');
+    if (r && r.blocked) {
+      this.showToast(`오늘 새 카드 한도(${r.cap}개)에 도달했어요. 내일 다시 추가할 수 있어요.`, 'info');
+      if (btn) { btn.textContent = '🔗 이 표현 저장'; btn.disabled = false; }
+      return;
+    }
+    this.showToast(`"${phrase}" 표현 저장됨!`, 'success');
+    this.updateQueueBadge();
+    Sync.scheduleSync();
+    if (btn) btn.textContent = '✅ 저장됨';
   },
 
   closeQuickMenu() {
@@ -1169,6 +1244,64 @@ let App = {
     }
   },
 
+  // 오늘의 독서 목표: 과거 읽기 속도로 "오늘 N단어(≈M분)"를 추천하고
+  // 오늘 읽은 양 대비 진행바를 보여준다. 속도 데이터가 없으면 기본값 사용.
+  async loadDailyGoal() {
+    const el = $('daily-goal');
+    if (!el) return;
+    const s = await getSettings();
+    const minutes = s.dailyMinutes || 20;
+    const wpm = (await getReadingSpeed()) || 150;
+    const goal = Math.max(100, Math.round((wpm * minutes) / 50) * 50);
+    let readToday = 0;
+    try { readToday = (await getDependencyStats()).today.words || 0; } catch (e) {}
+    const pct = Math.min(100, Math.round((readToday / goal) * 100));
+    const done = readToday >= goal;
+    el.hidden = false;
+    el.innerHTML = `
+      <div class="dg-row">
+        <span class="dg-label">📅 오늘의 독서 목표</span>
+        <span class="dg-val">${readToday.toLocaleString()} / ${goal.toLocaleString()}단어 · 약 ${minutes}분</span>
+      </div>
+      <div class="dg-bar"><div class="dg-fill" style="width:${pct}%"></div></div>
+      ${done ? '<div class="dg-done">🎉 오늘 목표를 달성했어요!</div>' : ''}
+    `;
+  },
+
+  // AI가 이 챕터에서 학습 가치 높은 표현 3~5개만 골라 추천한다(PRD 8.8).
+  // 각 항목은 단어장 추가 버튼으로 바로 카드화(카드 한도·중복 처리 그대로).
+  async loadExprReco() {
+    const box = $('expr-reco');
+    if (!box) return;
+    box.hidden = false;
+    box.innerHTML = '🔄 학습할 표현 고르는 중...';
+    const r = await AI.selectExpressions(this.currentChunk?.content || '');
+    if (!r || r.error || !(r.items?.length)) {
+      box.innerHTML = '<div class="er-empty">추천을 불러올 수 없어요. (설정에서 AI 키를 확인하세요)</div>';
+      return;
+    }
+    box.innerHTML = `<div class="er-title">💡 학습할 표현 추천</div>` + r.items.map(it => `
+      <div class="er-item">
+        <div class="er-main"><span class="er-en">${escapeHtml(it.en || '')}</span> <span class="er-ko">${escapeHtml(it.ko || '')}</span></div>
+        ${it.why ? `<div class="er-why">${escapeHtml(it.why)}</div>` : ''}
+        <button class="er-add" data-en="${escapeHtml(it.en || '')}" data-ko="${escapeHtml(it.ko || '')}">➕ 단어장</button>
+      </div>`).join('');
+  },
+
+  async saveExprFromReco(btn) {
+    const en = btn.dataset.en, ko = btn.dataset.ko;
+    if (!en) return;
+    const r = await addWord(en, ko || '', '', this.currentBook?.id, 0, '');
+    if (r && r.blocked) {
+      this.showToast(`오늘 새 카드 한도(${r.cap}개)에 도달했어요. 내일 다시 추가할 수 있어요.`, 'info');
+      return;
+    }
+    btn.textContent = '✅ 추가됨';
+    btn.disabled = true;
+    this.updateQueueBadge();
+    Sync.scheduleSync();
+  },
+
   // 읽기 전 예열: "지난 이야기"(이전 챕터 요약) + 다가올 챕터의 핵심 표현.
   // 데모/오류 시 조용히 숨긴다. 사용자가 접으면 그 챕터에서는 다시 안 뜬다.
   async loadWarmup() {
@@ -1516,6 +1649,7 @@ let App = {
     $('settings-fontsize').value = s.fontSize || 16;
     $('settings-fs-val').textContent = s.fontSize + 'px';
     $('settings-card-cap').value = s.dailyCardCap ?? 5;
+    $('settings-daily-min').value = s.dailyMinutes ?? 20;
   },
 
   async saveSettings() {
@@ -1527,6 +1661,7 @@ let App = {
       ttsRate: parseFloat($('settings-tts-rate').value),
       fontSize: parseInt($('settings-fontsize').value),
       dailyCardCap: parseInt($('settings-card-cap').value) || 0,
+      dailyMinutes: parseInt($('settings-daily-min').value) || 20,
       theme: 'dark', lineHeight: 1.9
     };
     

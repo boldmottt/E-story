@@ -433,7 +433,6 @@ async function getSettings() {
       aiKey: '', aiKeyMode: 'session',
       apiKeyStorageMode: 'session',
       dailyCardCap: 5,
-      dailyMinutes: 20,
       lastOpenedBookId: null, lastView: 'bookshelf'
     };
     await DB.settings.put(s);

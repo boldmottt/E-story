@@ -91,13 +91,6 @@ code{font-family:var(--font-mono);font-size:.85em;background:var(--bg4);padding:
 .tts-val{font-size:var(--t-sm);color:var(--tx3);min-width:30px;font-variant-numeric:tabular-nums}
 #tts-rate{width:90px;accent-color:var(--a0)}
 .chapter-summary{margin-bottom:20px;padding:16px 18px;background:var(--bg3);border:1px solid var(--bd);border-left:3px solid var(--a2);border-radius:var(--r-md);font-size:var(--t-sm);line-height:1.65;color:var(--tx2)}
-.daily-goal{margin-bottom:16px;padding:12px 16px;background:var(--bg3);border:1px solid var(--bd);border-left:3px solid var(--a5);border-radius:var(--r-md)}
-.daily-goal .dg-row{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:var(--t-sm);margin-bottom:8px}
-.daily-goal .dg-label{font-weight:600;color:var(--tx2)}
-.daily-goal .dg-val{color:var(--tx3);font-variant-numeric:tabular-nums}
-.daily-goal .dg-bar{height:6px;background:var(--bg);border-radius:3px;overflow:hidden}
-.daily-goal .dg-fill{height:100%;background:var(--a5);border-radius:3px;transition:width .5s ease}
-.daily-goal .dg-done{margin-top:8px;font-size:var(--t-sm);color:var(--a1);font-weight:600}
 .chapter-warmup{position:relative;margin-bottom:20px;padding:16px 18px;background:var(--bg3);border:1px solid var(--bd);border-left:3px solid var(--a0);border-radius:var(--r-md);font-size:var(--t-sm);line-height:1.65;color:var(--tx2)}
 .warmup-title{font-weight:700;color:var(--a0);margin-bottom:6px}
 .warmup-prev{margin-bottom:8px}

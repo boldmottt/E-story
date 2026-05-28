@@ -93,8 +93,12 @@ async function getBook(id) {
   return await DB.books.get(id);
 }
 
-async function updateBookProgress(id, chunk, offset) {
-  await DB.books.update(id, { currentChunk: chunk, currentOffset: offset, updatedAt: Date.now() });
+async function updateBookProgress(id, chunk, offset, page) {
+  await DB.books.update(id, { currentChunk: chunk, currentOffset: offset, currentPage: page ?? 0, updatedAt: Date.now() });
+}
+
+async function updateReadingProgress(id, pct) {
+  await DB.books.update(id, { readingProgress: pct, updatedAt: Date.now() });
 }
 
 async function updateBook(id, fields) {
@@ -428,7 +432,6 @@ async function getSettings() {
       aiModel: isLocal ? 'deepseek-v4-flash' : 'gpt-4o-mini',
       aiKey: '', aiKeyMode: 'session',
       apiKeyStorageMode: 'session',
-      fastMode: true,
       dailyCardCap: 5,
       dailyMinutes: 20,
       lastOpenedBookId: null, lastView: 'bookshelf'

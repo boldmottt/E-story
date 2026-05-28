@@ -197,7 +197,19 @@ let App = {
   _saveScrollPosition() {
     if (!this.currentBook) return;
     const offset = window.scrollY || window.pageYOffset;
-    updateBookProgress(this.currentBook.id, this.currentSelectedChunkIndex, offset);
+    updateBookProgress(this.currentBook.id, this.currentSelectedChunkIndex, offset, this._page || 0);
+  },
+
+  // Save page-level progress for the progress bar (page turns within a chunk).
+  _savePageProgress() {
+    if (!this.currentBook) return;
+    const total = this._totalPages();
+    if (total <= 0 || !this.currentChunks.length) return;
+    const pageContrib = (this._page || 0) / total;
+    const overall = Math.min(100, Math.round(
+      ((this.currentSelectedChunkIndex + pageContrib) / this.currentChunks.length) * 100
+    ));
+    updateReadingProgress(this.currentBook.id, overall);
   },
 
   async _patchSettings(patch) {
@@ -251,7 +263,7 @@ let App = {
     html += '<div class="url-import"><input type="text" id="url-input" placeholder="또는 CORS 허용된 URL / 로컬 서버 주소 (맥: python3 serve.py)" class="url-field"><button class="btn-s" id="url-load-btn">📥 불러오기</button></div>';
 
     books.forEach(book => {
-      const pct = book.totalChunks > 0 ? Math.round((book.currentChunk / book.totalChunks) * 100) : 0;
+      const pct = book.readingProgress ?? (book.totalChunks > 0 ? Math.round((book.currentChunk / book.totalChunks) * 100) : 0);
       const bandLabel = { green: '쉬움', yellow: '보통', red: '어려움' };
       const badge = book.difficultyBand
         ? `<span class="diff-badge ${book.difficultyBand}" title="적합도: ${bandLabel[book.difficultyBand] || ''}">${escapeHtml(book.estimatedCefr || '')}</span>`
@@ -372,7 +384,7 @@ let App = {
     $('reader-page').classList.add('active');
     this.switchView('reader');
 
-    this._page = 0;
+    this._page = Math.max(0, Math.min(this.currentBook.currentPage || 0, this._totalPages() - 1));
     this.renderReader();
     this.loadChapterSummary();
     this.loadWarmup();
@@ -475,10 +487,10 @@ let App = {
     const total = this._totalPages();
     const page = this._page || 0;
     if (dir === 'next') {
-      if (page < total - 1) { this._page = page + 1; this._renderPage(); }
+      if (page < total - 1) { this._page = page + 1; this._renderPage(); this._savePageProgress(); }
       else this.goToChunk(this.currentSelectedChunkIndex + 1, 'first');
     } else {
-      if (page > 0) { this._page = page - 1; this._renderPage(); }
+      if (page > 0) { this._page = page - 1; this._renderPage(); this._savePageProgress(); }
       else this.goToChunk(this.currentSelectedChunkIndex - 1, 'last');
     }
   },
@@ -598,7 +610,7 @@ let App = {
 
     // Save progress before moving
     const scrollOffset = window.scrollY || window.pageYOffset;
-    updateBookProgress(this.currentBook.id, this.currentSelectedChunkIndex, scrollOffset);
+    updateBookProgress(this.currentBook.id, this.currentSelectedChunkIndex, scrollOffset, this._page || 0);
     // End the session for the chunk we're leaving, then start a fresh one.
     this._endReadingSession();
 
@@ -620,10 +632,11 @@ let App = {
       this.loadWarmup();
       this.loadDailyGoal();
       window.scrollTo({ top: 0, behavior: 'instant' });
+      this._savePageProgress();
     });
     
     // Save current chunk in DB
-    updateBookProgress(this.currentBook.id, index, 0);
+    updateBookProgress(this.currentBook.id, index, 0, this._page || 0);
   },
 
   setReaderMode(mode) {
@@ -1775,7 +1788,6 @@ let App = {
     $('settings-model').value = s.aiModel || 'deepseek-v4-flash';
     $('settings-key').value = '';
     $('settings-key-mode').value = s.apiKeyStorageMode || 'session';
-    $('settings-fast-mode').checked = s.fastMode !== false;
     $('settings-tts-rate').value = s.ttsRate || 0.9;
     $('settings-tts-val').textContent = s.ttsRate + 'x';
     $('settings-fontsize').value = s.fontSize || 16;
@@ -1790,7 +1802,6 @@ let App = {
       aiModel: $('settings-model').value.trim(),
       aiKey: $('settings-key').value.trim(),
       apiKeyStorageMode: $('settings-key-mode').value,
-      fastMode: $('settings-fast-mode').checked,
       ttsRate: parseFloat($('settings-tts-rate').value),
       fontSize: parseInt($('settings-fontsize').value),
       dailyCardCap: parseInt($('settings-card-cap').value) || 0,
@@ -1801,7 +1812,6 @@ let App = {
     AI.setKey(s.aiKey, s.apiKeyStorageMode);
     AI.setBaseUrl(s.aiBaseUrl);
     AI.setModel(s.aiModel);
-    AI.setFastMode(s.fastMode);
 
     await saveSettings(s);
     this.showToast('설정이 저장되었습니다!', 'success');

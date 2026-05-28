@@ -325,6 +325,10 @@ code{font-family:var(--font-mono);font-size:.85em;background:var(--bg4);padding:
 
 /* ===== Report ===== */
 .report-note{font-size:var(--t-sm);color:var(--tx2);line-height:1.6;margin-bottom:14px}
+.coach-tip{display:flex;gap:8px;align-items:flex-start;padding:13px 16px;border-radius:var(--r-md);background:var(--bg3);border:1px solid var(--bd);border-left:3px solid var(--a4);font-size:var(--t-sm);line-height:1.6;color:var(--tx);margin-bottom:14px}
+.coach-tip.good{border-left-color:var(--a1)}
+.coach-tip.warn{border-left-color:var(--a2)}
+.coach-ico{flex:0 0 auto}
 .report-trend{padding:12px 16px;border-radius:var(--r-md);background:var(--bg3);border:1px solid var(--bd);border-left:3px solid var(--tx3);font-size:var(--t-sm);color:var(--tx);margin-bottom:18px}
 .report-trend.good{border-left-color:var(--a1);color:var(--a1)}
 .report-trend.warn{border-left-color:var(--a2);color:var(--a2)}

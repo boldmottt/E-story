@@ -363,6 +363,7 @@ let App = {
     this.loadChapterSummary();
     this.ensureDifficulty();
     this._startReadingSession();
+    this._maybeCoachToast();
 
     // Restore scroll position
     if (this.currentBook.currentOffset) {
@@ -1505,8 +1506,11 @@ let App = {
         <div class="rc-break">📖 사전 ${fmt(b.dict)} · 🌐 번역 ${fmt(b.trans)} · 🔍 힌트 ${fmt(b.help)}</div>
       </div>`;
 
+    const tip = this._coachTip(s);
+
     body.innerHTML = `
       <div class="report-note">핵심 지표는 <b>1000단어당 도움 사용 횟수</b>입니다. 낮을수록 더 독립적으로 읽고 있다는 뜻이에요.</div>
+      ${tip ? `<div class="coach-tip ${tip.cls}"><span class="coach-ico">🧭</span><span>${escapeHtml(tip.text)}</span></div>` : ''}
       <div class="report-trend ${trendInfo.cls}">${trendInfo.txt}</div>
       <div class="report-grid">
         ${card('오늘', s.today)}
@@ -1515,6 +1519,39 @@ let App = {
         ${card('전체', s.all)}
       </div>
     `;
+  },
+
+  // 책을 열 때 코치 제안을 토스트로 한 번만 살짝 띄운다(앱 세션당 1회).
+  async _maybeCoachToast() {
+    if (this._coachShown) return;
+    this._coachShown = true;
+    try {
+      const s = await getDependencyStats();
+      const tip = this._coachTip(s);
+      if (tip) this.showToast('🧭 ' + tip.text, tip.cls === 'good' ? 'success' : 'info');
+    } catch (e) { /* non-blocking */ }
+  },
+
+  // 적응형 코칭: 최근 읽기 패턴에서 가장 도움이 될 한 가지 제안을 고른다.
+  // 의미 있는 표본(주간 200단어 이상)이 없으면 null. 우선순위: 어휘 부담 →
+  // 번역 의존 → 잘하고 있을 때 분량 늘리기.
+  _coachTip(s) {
+    const b = (s.week && s.week.words >= 200) ? s.week : null;
+    if (!b) return null;
+    const per1k = n => (n / b.words) * 1000;
+    const dictRate = per1k(b.dict);
+    const transRate = per1k(b.trans);
+
+    if (dictRate >= 30) {
+      return { cls: 'warn', text: '어휘 부담이 큰 편이에요. 다음 챕터는 "읽기 전 예열"에서 핵심 표현을 먼저 훑고 시작해보세요.' };
+    }
+    if (transRate >= 15) {
+      return { cls: 'warn', text: '한국어 번역에 자주 기대고 있어요. 문장 요지를 보기 전에 "쉬운 영어"와 "끊어 읽기"를 먼저 시도해보세요.' };
+    }
+    if (s.trend === 'down' && b.rate <= 15) {
+      return { cls: 'good', text: '도움 없이 잘 읽고 있어요! 다음엔 도움을 조금 줄이고 읽는 분량을 살짝 늘려봐도 좋아요.' };
+    }
+    return null;
   },
 
   /* ===== Backup ===== */

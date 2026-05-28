@@ -25,6 +25,11 @@ DB.version(2).stores({
   settings: '++id'
 });
 
+DB.version(3).stores({
+  structureSessions: '++id, bookId, chunkId, score, createdAt',
+  structureTokens: '++id, sessionId, bookId, correctRole, isCorrect'
+});
+
 /* ===== Books ===== */
 async function addBook(file, content) {
   // Strip .txt extension, remove _djvu suffix (legacy DjVu source residue), then convert underscores to spaces
@@ -462,7 +467,7 @@ async function saveSettings(s) {
 }
 
 /* ===== Backup/Restore ===== */
-const EXPORT_TABLES = ['books','chunks','sentences','vocabulary','feedbackSessions','translationAttempts','studyQueue','highlights','settings'];
+const EXPORT_TABLES = ['books','chunks','sentences','vocabulary','feedbackSessions','translationAttempts','studyQueue','highlights','settings','structureSessions','structureTokens'];
 
 async function exportData() {
   const entries = await Promise.all(EXPORT_TABLES.map(name => DB[name].toArray().then(rows => [name, rows])));
@@ -516,4 +521,74 @@ async function fetchWordMeaning(word, sentence) {
     }
   } catch(e) {}
   return '(뜻을 불러오는 중...)';
+}
+
+/* ===== Structure Analysis ===== */
+
+async function addStructureSession(sessionData) {
+  const record = {
+    bookId: sessionData.bookId,
+    chunkId: sessionData.chunkId,
+    sentenceIndex: sessionData.sentenceIndex,
+    sentenceText: sessionData.sentenceText,
+    score: sessionData.score,
+    hitCount: sessionData.hitCount,
+    labeledCount: sessionData.labeledCount,
+    tokenCount: sessionData.tokenCount,
+    createdAt: Date.now()
+  };
+  return await DB.structureSessions.add(record);
+}
+
+async function addStructureTokens(sessionId, bookId, tokens) {
+  if (!tokens || !tokens.length) return;
+  const rows = tokens.map(t => ({
+    sessionId,
+    bookId,
+    token: t.token,
+    mineRole: t.mineRole,
+    correctRole: t.correctRole,
+    isCorrect: t.isCorrect ? 1 : 0,
+    createdAt: Date.now()
+  }));
+  await DB.structureTokens.bulkAdd(rows);
+}
+
+async function getStructureStats(bookId) {
+  let sessions;
+  if (bookId) {
+    sessions = await DB.structureSessions.where('bookId').equals(bookId).toArray();
+  } else {
+    sessions = await DB.structureSessions.toArray();
+  }
+  if (!sessions.length) {
+    return { totalSessions: 0, avgScore: 0, totalTokens: 0, correctTokens: 0, accuracy: 0 };
+  }
+  const totalSessions = sessions.length;
+  const avgScore = Math.round(sessions.reduce((s, row) => s + row.score, 0) / totalSessions);
+  const totalTokens = sessions.reduce((s, row) => s + (row.tokenCount || 0), 0);
+  const correctTokens = sessions.reduce((s, row) => s + (row.hitCount || 0), 0);
+  const accuracy = totalTokens > 0 ? Math.round((correctTokens / totalTokens) * 100) / 100 : 0;
+  return { totalSessions, avgScore, totalTokens, correctTokens, accuracy };
+}
+
+async function getStructureRoleAccuracy(bookId) {
+  let tokens;
+  if (bookId) {
+    tokens = await DB.structureTokens.where('bookId').equals(bookId).toArray();
+  } else {
+    tokens = await DB.structureTokens.toArray();
+  }
+  if (!tokens.length) return {};
+  const groups = {};
+  for (const t of tokens) {
+    const role = t.correctRole || 'unknown';
+    if (!groups[role]) groups[role] = { total: 0, correct: 0 };
+    groups[role].total++;
+    if (t.isCorrect) groups[role].correct++;
+  }
+  for (const role of Object.keys(groups)) {
+    groups[role].accuracy = Math.round((groups[role].correct / groups[role].total) * 100) / 100;
+  }
+  return groups;
 }

@@ -15,6 +15,7 @@ let App = {
   feedbackAttempts: [],
   queueCount: 0,
   _scrollThrottleTimer: null,
+  currentSessionId: null,
 
   async init() {
     await AI.init();
@@ -108,6 +109,7 @@ let App = {
         grammar: () => this.grammarHint(),
         gist: () => this.sentenceGist(),
         structure: () => this.openStructure(),
+        easyEnglish: () => this.easyEnglish(),
         ask: () => this.askFreeQuestion(),
         study: () => this.openStudy(),
         queue: () => this.queueLater()
@@ -167,6 +169,9 @@ let App = {
         this.closeQuickMenu();
       }
     });
+
+    // Flush any open reading session when the tab closes (dependency logging).
+    window.addEventListener('beforeunload', () => this._endReadingSession());
     
     // Throttled scroll position save
     document.addEventListener('scroll', () => {
@@ -190,6 +195,8 @@ let App = {
   },
 
   switchView(view) {
+    // Leaving the reader ends the active reading session (dependency logging).
+    if (this.currentView === 'reader' && view !== 'reader') this._endReadingSession();
     this.currentView = view;
     document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.view === view));
     document.querySelectorAll('.content').forEach(c => c.classList.toggle('active', c.id === view + '-page'));
@@ -230,8 +237,13 @@ let App = {
 
     books.forEach(book => {
       const pct = book.totalChunks > 0 ? Math.round((book.currentChunk / book.totalChunks) * 100) : 0;
+      const bandLabel = { green: '쉬움', yellow: '보통', red: '어려움' };
+      const badge = book.difficultyBand
+        ? `<span class="diff-badge ${book.difficultyBand}" title="적합도: ${bandLabel[book.difficultyBand] || ''}">${escapeHtml(book.estimatedCefr || '')}</span>`
+        : '';
       html += `<div class="book-card" data-id="${book.id}">
         <button class="book-del" data-action="delete" data-id="${book.id}" title="책 삭제" aria-label="책 삭제">✕</button>
+        ${badge}
         <div class="title">${escapeHtml(book.title)}</div>
         <div class="author">${escapeHtml(book.fileName)}</div>
         <div class="progress"><div class="progress-fill" style="width:${pct}%"></div></div>
@@ -347,6 +359,8 @@ let App = {
 
     this.renderReader();
     this.loadChapterSummary();
+    this.ensureDifficulty();
+    this._startReadingSession();
 
     // Restore scroll position
     if (this.currentBook.currentOffset) {
@@ -354,6 +368,25 @@ let App = {
         window.scrollTo({ top: this.currentBook.currentOffset, behavior: 'instant' });
       }, 50);
     }
+  },
+
+  // Lazily estimate book difficulty (CEFR + green/yellow/red) on first open,
+  // using only the first chunk as a sample. Cached on the book record so it
+  // runs once. Silent in demo mode (no key) — no badge appears.
+  async ensureDifficulty() {
+    const book = this.currentBook;
+    if (!book || book.difficultyBand) return;
+    const sample = this.currentChunks?.[0]?.content;
+    if (!sample) return;
+    const r = await AI.analyzeDifficulty(sample);
+    if (!r || r.error || !r.estimatedCefr) return;
+    const fields = {
+      estimatedCefr: r.estimatedCefr,
+      difficultyBand: r.difficultyBand || 'yellow',
+      difficultyNote: r.rationaleKo || ''
+    };
+    await updateBook(book.id, fields);
+    Object.assign(this.currentBook, fields);
   },
 
   // Group sentences into real <p> blocks by paragraph index.
@@ -461,14 +494,17 @@ let App = {
   goToChunk(index) {
     if (index < 0 || index >= this.currentChunks.length) return;
     if (index === this.currentSelectedChunkIndex) return;
-    
+
     // Save progress before moving
     const scrollOffset = window.scrollY || window.pageYOffset;
     updateBookProgress(this.currentBook.id, this.currentSelectedChunkIndex, scrollOffset);
-    
+    // End the session for the chunk we're leaving, then start a fresh one.
+    this._endReadingSession();
+
     // Switch chunk
     this.currentSelectedChunkIndex = index;
     this.currentChunk = this.currentChunks[index];
+    this._startReadingSession();
     
     // Update AI reading context
     AI.setReadingContext(this.currentBook.title, index, this.currentChunks.length);
@@ -488,6 +524,28 @@ let App = {
   setReaderMode(mode) {
     this.readerMode = mode;
     $('tts-bar').classList.toggle('open', mode === 'tts');
+  },
+
+  /* ===== Reading session (help-dependency logging) ===== */
+  _startReadingSession() {
+    this._endReadingSession();
+    if (!this.currentBook) return;
+    startReadingSession(this.currentBook.id, this.currentSelectedChunkIndex)
+      .then(id => { this.currentSessionId = id; });
+  },
+
+  _endReadingSession() {
+    const id = this.currentSessionId;
+    if (!id) return;
+    this.currentSessionId = null;
+    const wordsRead = (this.currentSentences || [])
+      .reduce((n, s) => n + (s.text ? s.text.split(/\s+/).filter(Boolean).length : 0), 0);
+    endReadingSession(id, this.currentSelectedChunkIndex, wordsRead);
+  },
+
+  // Fire-and-forget counter bump; safe when no session is active.
+  _logHelp(type) {
+    if (this.currentSessionId) bumpSessionCounter(this.currentSessionId, type);
   },
 
   /* ===== Sentence Click → Quick Menu ===== */
@@ -517,6 +575,7 @@ let App = {
         <button class="qm-btn word" data-action="word">📖 단어 힌트</button>
         <button class="qm-btn grammar" data-action="grammar">🔍 구문 힌트</button>
         <button class="qm-btn structure" data-action="structure">🏷️ 구조 분석</button>
+        <button class="qm-btn easy" data-action="easyEnglish">🟢 쉬운 영어</button>
         <button class="qm-btn gist" data-action="gist">📋 문장 요지</button>
         <button class="qm-btn ask" data-action="ask">💬 자유 질문</button>
         <button class="qm-btn study" data-action="study">✍️ 해석해보기</button>
@@ -548,6 +607,7 @@ let App = {
     const result = $('hint-result');
     result.style.display = 'block';
     result.textContent = '단어 뜻 불러오는 중...';
+    this._logHelp('dictionaryClicks');
     const hint = await AI.wordHint(word, this.selectedSentence.text);
     const meaning = hint.meaningKo || '';
     result.innerHTML = `<b>${escapeHtml(word)}</b>: ${escapeHtml(meaning || '데이터를 불러오는 중입니다')} <span style="color:var(--tx3)">(${escapeHtml(hint.partOfSpeech || '')})</span>`
@@ -556,7 +616,11 @@ let App = {
 
   async saveWordDirect(word, meaning) {
     if (!word) return;
-    await addWord(word, meaning || '', this.selectedSentence?.text || '', this.currentBook?.id, this.selectedSentence?.index, '');
+    const r = await addWord(word, meaning || '', this.selectedSentence?.text || '', this.currentBook?.id, this.selectedSentence?.index, '');
+    if (r && r.blocked) {
+      this.showToast(`오늘 새 카드 한도(${r.cap}개)에 도달했어요. 내일 다시 추가할 수 있어요.`, 'info');
+      return;
+    }
     this.showToast(`"${word}" 단어장에 추가됨!`, 'success');
   },
 
@@ -564,6 +628,7 @@ let App = {
     const result = $('hint-result');
     result.style.display = 'block';
     result.textContent = '분석 중...';
+    this._logHelp('helpStepsUsed');
     const data = await AI.grammarHint(this.selectedSentence.text);
     if (data.error) {
       result.textContent = '⚠️ ' + (data.message || '분석 실패');
@@ -576,12 +641,29 @@ let App = {
     const result = $('hint-result');
     result.style.display = 'block';
     result.textContent = '요약 중...';
+    this._logHelp('translationClicks');
     const data = await AI.sentenceGist(this.selectedSentence.text);
     if (data.error) {
       result.textContent = '⚠️ ' + (data.message || '요약 실패');
       return;
     }
     result.textContent = `📋 ${data.gistKo}`;
+  },
+
+  // 한국어로 바로 번역하지 않고, 더 쉬운 영어로 같은 뜻을 보여준다.
+  async easyEnglish() {
+    const result = $('hint-result');
+    result.style.display = 'block';
+    result.textContent = '쉬운 영어로 바꾸는 중...';
+    if (this.currentSessionId && typeof bumpSessionCounter === 'function') {
+      bumpSessionCounter(this.currentSessionId, 'helpStepsUsed');
+    }
+    const data = await AI.easyEnglish(this.selectedSentence.text);
+    if (data.error) {
+      result.textContent = '⚠️ ' + (data.message || '실패');
+      return;
+    }
+    result.textContent = `🟢 ${data.easyEn}`;
   },
 
   // 문장에 대해 AI에게 자유롭게 질문하는 입력칸을 연다.
@@ -647,6 +729,7 @@ let App = {
     this.closeQuickMenu();
     const sentence = this.selectedSentence?.text;
     if (!sentence) return;
+    this._logHelp('helpStepsUsed');
     const tokens = sentence.split(/\s+/).filter(Boolean);
     this._structUser = {};   // tokenIndex -> roleIndex
     this._structActive = 0;  // active role index
@@ -1089,7 +1172,12 @@ let App = {
         const word = btn.dataset.word;
         // M6: Fetch actual meaning from AI
         const meaning = await fetchWordMeaning(word, this.selectedSentence.text);
-        await addWord(word, meaning, this.selectedSentence.text, this.currentBook?.id, this.selectedSentence?.index, '');
+        const r = await addWord(word, meaning, this.selectedSentence.text, this.currentBook?.id, this.selectedSentence?.index, '');
+        if (r && r.blocked) {
+          this.showToast(`오늘 새 카드 한도(${r.cap}개)에 도달했어요. 내일 다시 추가할 수 있어요.`, 'info');
+          overlay.remove();
+          return;
+        }
         this.showToast(`"${word}" 단어장에 추가됨!`, 'success');
         this.updateQueueBadge();
         Sync.scheduleSync();
@@ -1316,6 +1404,7 @@ let App = {
     $('settings-tts-val').textContent = s.ttsRate + 'x';
     $('settings-fontsize').value = s.fontSize || 16;
     $('settings-fs-val').textContent = s.fontSize + 'px';
+    $('settings-card-cap').value = s.dailyCardCap ?? 5;
   },
 
   async saveSettings() {
@@ -1326,6 +1415,7 @@ let App = {
       apiKeyStorageMode: $('settings-key-mode').value,
       ttsRate: parseFloat($('settings-tts-rate').value),
       fontSize: parseInt($('settings-fontsize').value),
+      dailyCardCap: parseInt($('settings-card-cap').value) || 0,
       theme: 'dark', lineHeight: 1.9
     };
     

@@ -254,6 +254,20 @@ const AI = {
     });
   },
 
+  /** Paraphrase the sentence into SIMPLER English (not Korean). Helps the
+   *  reader understand without leaning on translation — reduces dependency. */
+  async easyEnglish(sentence) {
+    const key = this._cacheKey('ee', sentence);
+    return this._cached(key, async () => {
+      const r = await this._call([
+        { role: 'system', content: 'Return JSON: { "easyEn": "..." }' },
+        { role: 'user', content: `Rewrite in simpler English: "${sentence}"` }
+      ], 'Rewrite this single sentence in SIMPLER English (around CEFR A2-B1): common words, shorter clauses, same meaning. Output English only — do NOT translate to Korean. One sentence. NO spoilers, no outside context.');
+      if (r && !r.error && r.easyEn) return r;
+      return { error: true, code: 'unknown', message: '(API 연결을 확인해주세요)' };
+    });
+  },
+
   /** Model's OWN Korean translations of the English sentence, independent of
    *  the user's attempt — used for the final comparison view so 직역/의역이
    *  사용자 입력을 베끼지 않고 서로 구분된다. */
@@ -358,6 +372,21 @@ Return JSON: { "correctedEn": "...", "notesKo": ["..."], "usedTargetExpression":
     });
   },
 
+  /** Estimate reading difficulty from a SAMPLE of the book (not the whole text).
+   *  Returns CEFR level + a green/yellow/red suitability band. */
+  async analyzeDifficulty(sampleText) {
+    const sample = (sampleText || '').slice(0, 1500);
+    const key = this._cacheKey('ad', sample);
+    return this._cached(key, async () => {
+      const r = await this._call([
+        { role: 'system', content: 'Return JSON: { "estimatedCefr": "A2"|"B1"|"B2"|"C1", "difficultyBand": "green"|"yellow"|"red", "rationaleKo": "..." }' },
+        { role: 'user', content: sample }
+      ], '이 영어 텍스트 샘플의 독해 난이도만 판정하라. 어휘 수준·문장 구조·문체를 근거로 CEFR(A2~C1)을 추정한다. difficultyBand: green=독립 독서 가능, yellow=보조 독서 권장, red=상당히 어려움. rationaleKo는 한국어 한 줄. 줄거리를 요약하거나 누설하지 마라(스포일러 금지). 샘플 밖 지식을 쓰지 마라.');
+      if (r && !r.error && r.estimatedCefr) return r;
+      return { error: true };
+    });
+  },
+
   /* ── Demo fallback (only when no key) ── */
   _demoResponse(messages) {
     const lastMsg = messages[messages.length - 1]?.content || '';
@@ -377,6 +406,9 @@ Return JSON: { "correctedEn": "...", "notesKo": ["..."], "usedTargetExpression":
     }
     if (lastMsg.includes('"userText"')) {
       return { correctedEn: '', notesKo: ['⚙️ 설정에서 API 키를 등록하면 교정을 받을 수 있어요.'], usedTargetExpression: false };
+    }
+    if (lastMsg.includes('simpler English')) {
+      return { easyEn: '⚙️ Set an API key in Settings to use this.' };
     }
     return { gistKo: '⚙️ 설정에서 API 키를 등록해주세요.' };
   }

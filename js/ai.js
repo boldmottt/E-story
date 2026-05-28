@@ -466,24 +466,25 @@ Return JSON: { "correctedEn": "...", "notesKo": ["..."], "usedTargetExpression":
         shouldShowModelTranslation: false,
         literalTranslationKo: null,
         naturalTranslationKo: null,
-        storyNoteKo: null
+        storyNoteKo: null,
+        isDemo: true,
       };
     }
     if (lastMsg.includes('"sentence"') && lastMsg.includes('"question"')) {
-      return { answerKo: '⚙️ 설정에서 API 키를 등록해주세요.' };
+      return { answerKo: '⚙️ 설정에서 API 키를 등록해주세요.', isDemo: true };
     }
     if (lastMsg.includes('"userText"')) {
-      return { correctedEn: '', notesKo: ['⚙️ 설정에서 API 키를 등록하면 교정을 받을 수 있어요.'], usedTargetExpression: false };
+      return { correctedEn: '', notesKo: ['⚙️ 설정에서 API 키를 등록하면 교정을 받을 수 있어요.'], usedTargetExpression: false, isDemo: true };
     }
     if (lastMsg.includes('simpler English')) {
-      return { easyEn: '⚙️ Set an API key in Settings to use this.' };
+      return { easyEn: '⚙️ Set an API key in Settings to use this.', isDemo: true };
     }
     if (lastMsg.includes('upcomingChapter')) {
-      return { error: true };
+      return { error: true, isDemo: true };
     }
     if (lastMsg.startsWith('Sentence:')) {
-      return { groups: [{ en: '⚙️', ko: '설정에서 API 키를 등록해주세요.' }] };
+      return { groups: [{ en: '⚙️', ko: '설정에서 API 키를 등록해주세요.' }], isDemo: true };
     }
-    return { gistKo: '⚙️ 설정에서 API 키를 등록해주세요.' };
+    return { gistKo: '⚙️ 설정에서 API 키를 등록해주세요.', isDemo: true };
   }
 };

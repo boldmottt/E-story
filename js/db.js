@@ -313,6 +313,22 @@ async function endReadingSession(sessionId, endChunk, wordsRead) {
   });
 }
 
+// Estimate reading speed (words/min) from finished sessions of plausible
+// duration. Returns null when there isn't enough data (caller uses a default).
+async function getReadingSpeed() {
+  const sessions = await DB.readingSessions.toArray();
+  let words = 0, minutes = 0;
+  for (const s of sessions) {
+    if (!s.endedAt || !s.startedAt || !s.wordsRead) continue;
+    const mins = (s.endedAt - s.startedAt) / 60000;
+    if (mins < 0.5 || mins > 120) continue; // ignore idle/abandoned sessions
+    words += s.wordsRead;
+    minutes += mins;
+  }
+  if (words < 300 || minutes <= 0) return null;
+  return Math.round(words / minutes);
+}
+
 // Aggregate reading sessions into help-dependency stats. North Star: the rate
 // of help (dictionary + translation + hint steps) per 1000 words read should
 // fall over time. Returns today, this-week, and last-week buckets + a trend.
@@ -397,6 +413,7 @@ async function getSettings() {
       aiKey: '', aiKeyMode: 'session',
       apiKeyStorageMode: 'session',
       dailyCardCap: 5,
+      dailyMinutes: 20,
       lastOpenedBookId: null, lastView: 'bookshelf'
     };
     await DB.settings.put(s);

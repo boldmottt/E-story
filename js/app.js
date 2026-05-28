@@ -1056,6 +1056,33 @@ let App = {
     });
     const score = labeled ? Math.round((hit / labeled) * 100) : 0;
 
+    // === 학습 데이터 저장 (fire-and-forget) ===
+    const bookId = this.currentBook?.id;
+    const chunkId = this.currentChunk?.id;
+    const sIndex = this.selectedSentence?.index;
+    if (bookId) {
+      (async () => {
+        try {
+          const sessionId = await addStructureSession({
+            bookId, chunkId, sentenceIndex: sIndex,
+            sentenceText: sentence,
+            score, hitCount: hit, labeledCount: labeled,
+            tokenCount: review.length,
+          });
+          const tokensToSave = review.map(r => ({
+            token: r.word,
+            mineRole: r.mine,
+            correctRole: r.correct,
+            isCorrect: r.status === 'ok' ? 1 : 0,
+          }));
+          await addStructureTokens(sessionId, bookId, tokensToSave);
+        } catch (err) {
+          console.warn('[structure] 저장 실패:', err);
+        }
+      })();
+    }
+    // === END ===
+
     // 오답 → 미선택 → 정답 순으로 정렬해 틀린 것부터 한눈에
     const order = { miss: 0, skip: 1, ok: 2 };
     const rowHtml = [...review].sort((a, b) => order[a.status] - order[b.status]).map(r => {

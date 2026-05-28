@@ -16,6 +16,10 @@ const AI = {
   _model: AI_DEFAULT_MODEL,
   _mode: 'demo',
   _storageMode: 'session',
+  // Fast mode: ask the model to spend little/no budget on hidden reasoning.
+  // Sent as OpenAI-compatible `reasoning_effort`. Toggle off if the endpoint
+  // rejects the param.
+  _fastMode: true,
 
   // Reading context for No-spoiler
   _readingContext: { bookTitle: '', chunkIndex: 0, totalChunks: 0 },
@@ -66,6 +70,7 @@ const AI = {
       // Use settings for baseUrl/model if configured
       if (s.aiBaseUrl) this._baseUrl = s.aiBaseUrl;
       if (s.aiModel) this._model = s.aiModel;
+      if (s.fastMode !== undefined) this._fastMode = !!s.fastMode;
     } catch (e) {
       console.warn('AI.init: settings load failed, using defaults', e);
     }
@@ -89,6 +94,7 @@ const AI = {
 
   setBaseUrl(url) { if (url) this._baseUrl = url; },
   setModel(model) { if (model) this._model = model; },
+  setFastMode(on) { this._fastMode = !!on; },
 
   /** Store reading context for No-spoiler enforcement */
   setReadingContext(bookTitle, chunkIndex, totalChunks) {
@@ -152,6 +158,9 @@ const AI = {
         model: this._model, messages: fullMessages,
         max_tokens: maxTokens, temperature: 0.3, stream: false
       };
+      // Fast mode: minimise hidden reasoning for snappier replies. Harmless on
+      // endpoints that ignore the field; turn off in Settings if one rejects it.
+      if (this._fastMode) body.reasoning_effort = 'low';
       if (jsonMode) body.response_format = { type: 'json_object' };
 
       const headers = { 'Content-Type': 'application/json' };
@@ -225,7 +234,7 @@ const AI = {
       const r = await this._call([
         { role: 'system', content: 'Return JSON: { "word": "...", "meaningKo": "...", "partOfSpeech": "..." } — Translate the given word in context of the sentence.' },
         { role: 'user', content: `Korean meaning of "${word}" in: "${sentence}"` }
-      ], 'You are a concise English-Korean dictionary. Give the meaning of the specific word the user asks about, in the context of this sentence.');
+      ], 'You are a concise English-Korean dictionary. Give the meaning of the specific word the user asks about, in the context of this sentence.', true, 600);
       if (r && !r.error) return r;
       return { word, meaningKo: '(API 오류)', partOfSpeech: '' };
     });
@@ -237,7 +246,7 @@ const AI = {
       const r = await this._call([
         { role: 'system', content: 'Return JSON: { "structure": "...", "keyPoints": [], "tense": "...", "clauseType": "..." } — Explain grammar in Korean.' },
         { role: 'user', content: `Explain grammar of: "${sentence}"` }
-      ], 'Explain the grammar structure of this sentence in Korean. Focus on one key point. Do NOT translate the sentence.');
+      ], 'Explain the grammar structure of this sentence in Korean. Focus on one key point. Do NOT translate the sentence.', true, 700);
       if (r && !r.error) return r;
       return { structure: '(API 오류)', keyPoints: [], tense: '', clauseType: '' };
     });
@@ -256,7 +265,7 @@ const AI = {
       ], `이 문장에서 한국어 모어 학습자가 특히 어려워하는 포인트를 1~2개만 골라 한국어로 설명하라.
 후보 유형(type): 대명사 지시, 완료시제, 후치수식, 관계절, 무생물 주어, 관사, 전치사.
 - 해당되는 게 있을 때만 포함. 예: 대명사 지시면 그 대명사가 가리키는 대상을 짚어라. 완료시제면 시점 관계를 짧게 설명.
-- ko는 초보자도 이해할 친절한 한국어 1~2문장. 문장을 통째로 번역하지 마라. NO spoilers.`);
+- ko는 초보자도 이해할 친절한 한국어 1~2문장. 문장을 통째로 번역하지 마라. NO spoilers.`, true, 800);
       if (r && !r.error && Array.isArray(r.points) && r.points.length) return r;
       return { error: true, message: '(API 연결을 확인해주세요)' };
     });
@@ -267,7 +276,7 @@ const AI = {
     return this._cached(key, async () => {
       const r = await this._call([
         { role: 'user', content: `Short Korean gist (2-3 words) of: "${sentence}"` }
-      ], 'Return JSON: { "gistKo": "..." } — A VERY short Korean gist (2-3 words) of this single sentence. NO spoilers, NO future context. Use present tense only.');
+      ], 'Return JSON: { "gistKo": "..." } — A VERY short Korean gist (2-3 words) of this single sentence. NO spoilers, NO future context. Use present tense only.', true, 500);
       if (r && !r.error) return r;
       return { error: true, code: 'unknown', message: '(API 연결을 확인해주세요)' };
     });
@@ -281,7 +290,7 @@ const AI = {
       const r = await this._call([
         { role: 'system', content: 'Return JSON: { "easyEn": "..." }' },
         { role: 'user', content: `Rewrite in simpler English: "${sentence}"` }
-      ], 'Rewrite this single sentence in SIMPLER English (around CEFR A2-B1): common words, shorter clauses, same meaning. Output English only — do NOT translate to Korean. One sentence. NO spoilers, no outside context.');
+      ], 'Rewrite this single sentence in SIMPLER English (around CEFR A2-B1): common words, shorter clauses, same meaning. Output English only — do NOT translate to Korean. One sentence. NO spoilers, no outside context.', true, 600);
       if (r && !r.error && r.easyEn) return r;
       return { error: true, code: 'unknown', message: '(API 연결을 확인해주세요)' };
     });
@@ -296,7 +305,7 @@ const AI = {
       const r = await this._call([
         { role: 'system', content: 'Return JSON: { "groups": [ { "en": "...", "ko": "..." } ] }' },
         { role: 'user', content: `Sentence: "${sentence}"` }
-      ], '이 영어 문장을 의미 단위(sense group)로 끊어라. groups 배열에 원문 어순 그대로 각 덩어리를 넣는다. en = 그 영어 덩어리(원문 단어 그대로), ko = 그 덩어리의 아주 짧은 한국어 뜻. 한국어 어순으로 재배열하지 말고 영어 순서를 유지한다. 보통 3~7개 덩어리. NO spoilers, 문장 밖 맥락 금지.');
+      ], '이 영어 문장을 의미 단위(sense group)로 끊어라. groups 배열에 원문 어순 그대로 각 덩어리를 넣는다. en = 그 영어 덩어리(원문 단어 그대로), ko = 그 덩어리의 아주 짧은 한국어 뜻. 한국어 어순으로 재배열하지 말고 영어 순서를 유지한다. 보통 3~7개 덩어리. NO spoilers, 문장 밖 맥락 금지.', true, 700);
       if (r && !r.error && Array.isArray(r.groups) && r.groups.length) return r;
       return { error: true, code: 'unknown', message: '(API 연결을 확인해주세요)' };
     });
@@ -311,7 +320,7 @@ const AI = {
       const r = await this._call([
         { role: 'system', content: 'Return JSON: { "literalTranslationKo": "...", "naturalTranslationKo": "...", "storyNoteKo": "..." }' },
         { role: 'user', content: `English sentence: "${sentence}"` }
-      ], '이 영어 문장을 한국어로 두 가지로 번역하라. 사용자의 번역과 무관하게 원문만 보고 새로 작성한다. literalTranslationKo = 어순·구문을 살린 직역. naturalTranslationKo = 한국어답게 매끄러운 의역. 두 번역은 반드시 서로 달라야 한다(같은 문장 반복 금지). storyNoteKo = 이 문장의 뉘앙스·장면 의미 한 줄. NO spoilers.');
+      ], '이 영어 문장을 한국어로 두 가지로 번역하라. 사용자의 번역과 무관하게 원문만 보고 새로 작성한다. literalTranslationKo = 어순·구문을 살린 직역. naturalTranslationKo = 한국어답게 매끄러운 의역. 두 번역은 반드시 서로 달라야 한다(같은 문장 반복 금지). storyNoteKo = 이 문장의 뉘앙스·장면 의미 한 줄. NO spoilers.', true, 800);
       if (r && !r.error) return r;
       return { error: true };
     });
@@ -366,7 +375,7 @@ Return JSON: { "status": "needs_revision"|"good_enough"|"finished", "issueType":
 CRITICAL: shouldShowModelTranslation is ALWAYS false for 'good_enough' status. Only set true when status is 'finished'.
 When finished, include literalTranslationKo, naturalTranslationKo, storyNoteKo.` },
       { role: 'user', content: JSON.stringify({ sentence, userTranslation, previousIssues }) }
-    ], 'You are a Korean-speaking English tutor. One feedback point at a time. NEVER show model translations until the user has finished (status="finished").');
+    ], 'You are a Korean-speaking English tutor. One feedback point at a time. NEVER show model translations until the user has finished (status="finished").', true, 1500);
   },
 
   async storyBuddy(sentence, question, context) {
@@ -374,7 +383,7 @@ When finished, include literalTranslationKo, naturalTranslationKo, storyNoteKo.`
     return this._cached(key, async () => {
       const r = await this._call([
         { role: 'user', content: JSON.stringify({ sentence, question, context }) }
-      ], 'Return JSON: { "answerKo": "..." } — Korean answer about the story. NO spoilers. Only talk about what has happened up to this sentence. If asked about future, say "아직 읽지 않은 부분이에요."');
+      ], 'Return JSON: { "answerKo": "..." } — Korean answer about the story. NO spoilers. Only talk about what has happened up to this sentence. If asked about future, say "아직 읽지 않은 부분이에요."', true, 600);
       if (r && !r.error) return r;
       return { answerKo: '(API 연결 오류)' };
     });
@@ -392,7 +401,7 @@ Rules:
 4. usedTargetExpression = true if they reused vocabulary/phrasing from the context sentence.
 Return JSON: { "correctedEn": "...", "notesKo": ["..."], "usedTargetExpression": false }` },
       { role: 'user', content: JSON.stringify({ userText, contextSentence }) }
-    ], 'Gently correct the learner\'s short English. Meaning-first, max 5 fixes, encouraging tone. NO spoilers.');
+    ], 'Gently correct the learner\'s short English. Meaning-first, max 5 fixes, encouraging tone. NO spoilers.', true, 800);
   },
 
   async chapterSummary(text) {
@@ -400,7 +409,7 @@ Return JSON: { "correctedEn": "...", "notesKo": ["..."], "usedTargetExpression":
     return this._cached(key, async () => {
       const r = await this._call([
         { role: 'user', content: text.slice(0, 4000) }
-      ], 'Return JSON: { "summary3lines": "", "characters": [], "keyScenes": [], "expressions": [], "studySentence": "" } — Korean chapter summary. Only summarize the text provided. Do NOT add information from outside this text.');
+      ], 'Return JSON: { "summary3lines": "", "characters": [], "keyScenes": [], "expressions": [], "studySentence": "" } — Korean chapter summary. Only summarize the text provided. Do NOT add information from outside this text.', true, 1000);
       if (r && !r.error) return r;
       return { summary3lines: '(API 오류)', characters: [], keyScenes: [], expressions: [] };
     });
@@ -416,7 +425,7 @@ Return JSON: { "correctedEn": "...", "notesKo": ["..."], "usedTargetExpression":
       const r = await this._call([
         { role: 'system', content: 'Return JSON: { "items": [ { "en": "...", "ko": "...", "why": "..." } ] }' },
         { role: 'user', content: sample }
-      ], '이 텍스트에서 학습 가치가 높은 영어 표현을 3~5개만 골라라. 기준: 실제로 자주 쓰여 재사용 가능한 표현(연어·구동사·관용구) 우선. 제외: 고유명사, 세계관 전용어, 너무 희귀한 문학어. en=표현, ko=짧은 한국어 뜻, why=왜 배울 가치가 있는지 한국어 한 줄. NO spoilers about plot.');
+      ], '이 텍스트에서 학습 가치가 높은 영어 표현을 3~5개만 골라라. 기준: 실제로 자주 쓰여 재사용 가능한 표현(연어·구동사·관용구) 우선. 제외: 고유명사, 세계관 전용어, 너무 희귀한 문학어. en=표현, ko=짧은 한국어 뜻, why=왜 배울 가치가 있는지 한국어 한 줄. NO spoilers about plot.', true, 800);
       if (r && !r.error && Array.isArray(r.items) && r.items.length) return r;
       return { error: true };
     });
@@ -433,7 +442,7 @@ Return JSON: { "correctedEn": "...", "notesKo": ["..."], "usedTargetExpression":
       const r = await this._call([
         { role: 'system', content: 'Return JSON: { "previouslyKo": "...", "expressions": [ { "en": "...", "ko": "..." } ] }' },
         { role: 'user', content: JSON.stringify({ previousChapter: prev, upcomingChapter: cur }) }
-      ], 'previouslyKo = 이전 챕터(previousChapter)에서 무슨 일이 있었는지 한국어 2~3문장 요약("지난 이야기"). 이전 챕터가 비어 있으면 빈 문자열. expressions = 다가올 챕터(upcomingChapter)에서 눈여겨볼 핵심 영어 표현 3~5개(en=표현, ko=짧은 뜻). 표현은 표면적 어구만 뽑고 줄거리 전개·결말을 누설하지 마라. NO spoilers about upcoming events.');
+      ], 'previouslyKo = 이전 챕터(previousChapter)에서 무슨 일이 있었는지 한국어 2~3문장 요약("지난 이야기"). 이전 챕터가 비어 있으면 빈 문자열. expressions = 다가올 챕터(upcomingChapter)에서 눈여겨볼 핵심 영어 표현 3~5개(en=표현, ko=짧은 뜻). 표현은 표면적 어구만 뽑고 줄거리 전개·결말을 누설하지 마라. NO spoilers about upcoming events.', true, 800);
       if (r && !r.error) return r;
       return { error: true };
     });
@@ -448,7 +457,7 @@ Return JSON: { "correctedEn": "...", "notesKo": ["..."], "usedTargetExpression":
       const r = await this._call([
         { role: 'system', content: 'Return JSON: { "estimatedCefr": "A2"|"B1"|"B2"|"C1", "difficultyBand": "green"|"yellow"|"red", "rationaleKo": "..." }' },
         { role: 'user', content: sample }
-      ], '이 영어 텍스트 샘플의 독해 난이도만 판정하라. 어휘 수준·문장 구조·문체를 근거로 CEFR(A2~C1)을 추정한다. difficultyBand: green=독립 독서 가능, yellow=보조 독서 권장, red=상당히 어려움. rationaleKo는 한국어 한 줄. 줄거리를 요약하거나 누설하지 마라(스포일러 금지). 샘플 밖 지식을 쓰지 마라.');
+      ], '이 영어 텍스트 샘플의 독해 난이도만 판정하라. 어휘 수준·문장 구조·문체를 근거로 CEFR(A2~C1)을 추정한다. difficultyBand: green=독립 독서 가능, yellow=보조 독서 권장, red=상당히 어려움. rationaleKo는 한국어 한 줄. 줄거리를 요약하거나 누설하지 마라(스포일러 금지). 샘플 밖 지식을 쓰지 마라.', true, 600);
       if (r && !r.error && r.estimatedCefr) return r;
       return { error: true };
     });

@@ -1775,6 +1775,7 @@ let App = {
     $('settings-model').value = s.aiModel || 'deepseek-v4-flash';
     $('settings-key').value = '';
     $('settings-key-mode').value = s.apiKeyStorageMode || 'session';
+    $('settings-fast-mode').checked = s.fastMode !== false;
     $('settings-tts-rate').value = s.ttsRate || 0.9;
     $('settings-tts-val').textContent = s.ttsRate + 'x';
     $('settings-fontsize').value = s.fontSize || 16;
@@ -1789,6 +1790,7 @@ let App = {
       aiModel: $('settings-model').value.trim(),
       aiKey: $('settings-key').value.trim(),
       apiKeyStorageMode: $('settings-key-mode').value,
+      fastMode: $('settings-fast-mode').checked,
       ttsRate: parseFloat($('settings-tts-rate').value),
       fontSize: parseInt($('settings-fontsize').value),
       dailyCardCap: parseInt($('settings-card-cap').value) || 0,
@@ -1799,7 +1801,8 @@ let App = {
     AI.setKey(s.aiKey, s.apiKeyStorageMode);
     AI.setBaseUrl(s.aiBaseUrl);
     AI.setModel(s.aiModel);
-    
+    AI.setFastMode(s.fastMode);
+
     await saveSettings(s);
     this.showToast('설정이 저장되었습니다!', 'success');
   },

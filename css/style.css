@@ -100,6 +100,18 @@ code{font-family:var(--font-mono);font-size:.85em;background:var(--bg4);padding:
 .cs-characters{margin-top:6px}
 .cs-scenes{margin-top:4px}
 .cs-expr{margin-top:4px}
+.expr-reco-bar{margin-bottom:14px}
+.expr-reco{margin-bottom:18px;padding:14px 16px;background:var(--bg3);border:1px solid var(--bd);border-left:3px solid var(--a2);border-radius:var(--r-md)}
+.expr-reco .er-title{font-weight:700;color:var(--a2);margin-bottom:10px;font-size:var(--t-sm)}
+.expr-reco .er-item{padding:8px 0;border-top:1px solid var(--bd)}
+.expr-reco .er-item:first-of-type{border-top:none}
+.expr-reco .er-en{font-family:var(--font-read);font-weight:600;color:var(--tx)}
+.expr-reco .er-ko{color:var(--tx3);font-size:var(--t-sm)}
+.expr-reco .er-why{font-size:var(--t-sm);color:var(--tx2);margin:3px 0 6px}
+.expr-reco .er-add{padding:3px 10px;border:1px solid var(--bd2);border-radius:999px;background:var(--bg3);color:var(--a0);font-size:var(--t-meta);font-weight:600;font-family:var(--font);cursor:pointer}
+.expr-reco .er-add:hover{background:var(--a0);color:var(--on-accent)}
+.expr-reco .er-add:disabled{opacity:.6;cursor:default}
+.expr-reco .er-empty{font-size:var(--t-sm);color:var(--tx3)}
 .qm-word:hover{background:var(--bg4)}
 .qm-word.selected{background:var(--a0);color:var(--on-accent)}
 .qm-words-wrap{margin-bottom:8px;padding:8px;background:var(--bg4);border-radius:var(--r-sm);line-height:1.9}

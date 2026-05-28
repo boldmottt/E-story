@@ -387,6 +387,22 @@ Return JSON: { "correctedEn": "...", "notesKo": ["..."], "usedTargetExpression":
     });
   },
 
+  /** Pick the few highest learning-value expressions from a chunk: common,
+   *  reusable phrasing — NOT proper nouns or rare literary words. Used to keep
+   *  the user from trying to memorise everything (PRD 8.8). */
+  async selectExpressions(text) {
+    const sample = (text || '').slice(0, 4000);
+    const key = this._cacheKey('se', sample.slice(0, 300));
+    return this._cached(key, async () => {
+      const r = await this._call([
+        { role: 'system', content: 'Return JSON: { "items": [ { "en": "...", "ko": "...", "why": "..." } ] }' },
+        { role: 'user', content: sample }
+      ], '이 텍스트에서 학습 가치가 높은 영어 표현을 3~5개만 골라라. 기준: 실제로 자주 쓰여 재사용 가능한 표현(연어·구동사·관용구) 우선. 제외: 고유명사, 세계관 전용어, 너무 희귀한 문학어. en=표현, ko=짧은 한국어 뜻, why=왜 배울 가치가 있는지 한국어 한 줄. NO spoilers about plot.');
+      if (r && !r.error && Array.isArray(r.items) && r.items.length) return r;
+      return { error: true };
+    });
+  },
+
   /** Pre-reading warm-up. "Previously" = Korean recap of the PREVIOUS chunk
    *  (already read, so no spoiler). "expressions" = key phrases to watch for
    *  in the upcoming chunk (surface phrases only, no plot reveal). */

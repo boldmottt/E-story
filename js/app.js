@@ -15,6 +15,7 @@ let App = {
   feedbackAttempts: [],
   queueCount: 0,
   _scrollThrottleTimer: null,
+  currentSessionId: null,
 
   async init() {
     await AI.init();
@@ -167,6 +168,9 @@ let App = {
         this.closeQuickMenu();
       }
     });
+
+    // Flush any open reading session when the tab closes (dependency logging).
+    window.addEventListener('beforeunload', () => this._endReadingSession());
     
     // Throttled scroll position save
     document.addEventListener('scroll', () => {
@@ -190,6 +194,8 @@ let App = {
   },
 
   switchView(view) {
+    // Leaving the reader ends the active reading session (dependency logging).
+    if (this.currentView === 'reader' && view !== 'reader') this._endReadingSession();
     this.currentView = view;
     document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.view === view));
     document.querySelectorAll('.content').forEach(c => c.classList.toggle('active', c.id === view + '-page'));
@@ -347,6 +353,7 @@ let App = {
 
     this.renderReader();
     this.loadChapterSummary();
+    this._startReadingSession();
 
     // Restore scroll position
     if (this.currentBook.currentOffset) {
@@ -461,14 +468,17 @@ let App = {
   goToChunk(index) {
     if (index < 0 || index >= this.currentChunks.length) return;
     if (index === this.currentSelectedChunkIndex) return;
-    
+
     // Save progress before moving
     const scrollOffset = window.scrollY || window.pageYOffset;
     updateBookProgress(this.currentBook.id, this.currentSelectedChunkIndex, scrollOffset);
-    
+    // End the session for the chunk we're leaving, then start a fresh one.
+    this._endReadingSession();
+
     // Switch chunk
     this.currentSelectedChunkIndex = index;
     this.currentChunk = this.currentChunks[index];
+    this._startReadingSession();
     
     // Update AI reading context
     AI.setReadingContext(this.currentBook.title, index, this.currentChunks.length);
@@ -488,6 +498,28 @@ let App = {
   setReaderMode(mode) {
     this.readerMode = mode;
     $('tts-bar').classList.toggle('open', mode === 'tts');
+  },
+
+  /* ===== Reading session (help-dependency logging) ===== */
+  _startReadingSession() {
+    this._endReadingSession();
+    if (!this.currentBook) return;
+    startReadingSession(this.currentBook.id, this.currentSelectedChunkIndex)
+      .then(id => { this.currentSessionId = id; });
+  },
+
+  _endReadingSession() {
+    const id = this.currentSessionId;
+    if (!id) return;
+    this.currentSessionId = null;
+    const wordsRead = (this.currentSentences || [])
+      .reduce((n, s) => n + (s.text ? s.text.split(/\s+/).filter(Boolean).length : 0), 0);
+    endReadingSession(id, this.currentSelectedChunkIndex, wordsRead);
+  },
+
+  // Fire-and-forget counter bump; safe when no session is active.
+  _logHelp(type) {
+    if (this.currentSessionId) bumpSessionCounter(this.currentSessionId, type);
   },
 
   /* ===== Sentence Click → Quick Menu ===== */
@@ -548,6 +580,7 @@ let App = {
     const result = $('hint-result');
     result.style.display = 'block';
     result.textContent = '단어 뜻 불러오는 중...';
+    this._logHelp('dictionaryClicks');
     const hint = await AI.wordHint(word, this.selectedSentence.text);
     const meaning = hint.meaningKo || '';
     result.innerHTML = `<b>${escapeHtml(word)}</b>: ${escapeHtml(meaning || '데이터를 불러오는 중입니다')} <span style="color:var(--tx3)">(${escapeHtml(hint.partOfSpeech || '')})</span>`
@@ -564,6 +597,7 @@ let App = {
     const result = $('hint-result');
     result.style.display = 'block';
     result.textContent = '분석 중...';
+    this._logHelp('helpStepsUsed');
     const data = await AI.grammarHint(this.selectedSentence.text);
     if (data.error) {
       result.textContent = '⚠️ ' + (data.message || '분석 실패');
@@ -576,6 +610,7 @@ let App = {
     const result = $('hint-result');
     result.style.display = 'block';
     result.textContent = '요약 중...';
+    this._logHelp('translationClicks');
     const data = await AI.sentenceGist(this.selectedSentence.text);
     if (data.error) {
       result.textContent = '⚠️ ' + (data.message || '요약 실패');
@@ -647,6 +682,7 @@ let App = {
     this.closeQuickMenu();
     const sentence = this.selectedSentence?.text;
     if (!sentence) return;
+    this._logHelp('helpStepsUsed');
     const tokens = sentence.split(/\s+/).filter(Boolean);
     this._structUser = {};   // tokenIndex -> roleIndex
     this._structActive = 0;  // active role index

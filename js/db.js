@@ -241,6 +241,34 @@ async function getQueueCount() {
   return await DB.studyQueue.where('status').equals('pending').count();
 }
 
+/* ===== Reading Sessions (help-dependency logging) =====
+ * North Star: 도움 의존도 감소. We log how much help the reader leans on
+ * (dictionary lookups, Korean translations, hint-ladder steps) per session so
+ * reports can later show whether dependency is dropping over time. */
+async function startReadingSession(bookId, chunkIndex) {
+  return await DB.readingSessions.add({
+    bookId, chunkIndex,
+    startedAt: Date.now(),
+    dictionaryClicks: 0, translationClicks: 0, helpStepsUsed: 0,
+    endChunk: null, wordsRead: 0, endedAt: null
+  });
+}
+
+async function bumpSessionCounter(sessionId, type) {
+  if (!sessionId) return;
+  if (!['dictionaryClicks', 'translationClicks', 'helpStepsUsed'].includes(type)) return;
+  const row = await DB.readingSessions.get(sessionId);
+  if (!row) return;
+  await DB.readingSessions.update(sessionId, { [type]: (row[type] || 0) + 1 });
+}
+
+async function endReadingSession(sessionId, endChunk, wordsRead) {
+  if (!sessionId) return;
+  await DB.readingSessions.update(sessionId, {
+    endChunk, wordsRead: wordsRead || 0, endedAt: Date.now()
+  });
+}
+
 /* ===== Feedback ===== */
 async function saveFeedbackSession(bookId, sentenceId, originalSentence, attempts, finalTranslation, literal, natural, storyNote) {
   const sid = await DB.feedbackSessions.add({

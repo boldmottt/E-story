@@ -357,6 +357,21 @@ When finished, include literalTranslationKo, naturalTranslationKo, storyNoteKo.`
     });
   },
 
+  /** Estimate reading difficulty from a SAMPLE of the book (not the whole text).
+   *  Returns CEFR level + a green/yellow/red suitability band. */
+  async analyzeDifficulty(sampleText) {
+    const sample = (sampleText || '').slice(0, 1500);
+    const key = this._cacheKey('ad', sample);
+    return this._cached(key, async () => {
+      const r = await this._call([
+        { role: 'system', content: 'Return JSON: { "estimatedCefr": "A2"|"B1"|"B2"|"C1", "difficultyBand": "green"|"yellow"|"red", "rationaleKo": "..." }' },
+        { role: 'user', content: sample }
+      ], '이 영어 텍스트 샘플의 독해 난이도만 판정하라. 어휘 수준·문장 구조·문체를 근거로 CEFR(A2~C1)을 추정한다. difficultyBand: green=독립 독서 가능, yellow=보조 독서 권장, red=상당히 어려움. rationaleKo는 한국어 한 줄. 줄거리를 요약하거나 누설하지 마라(스포일러 금지). 샘플 밖 지식을 쓰지 마라.');
+      if (r && !r.error && r.estimatedCefr) return r;
+      return { error: true };
+    });
+  },
+
   /* ── Demo fallback (only when no key) ── */
   _demoResponse(messages) {
     const lastMsg = messages[messages.length - 1]?.content || '';

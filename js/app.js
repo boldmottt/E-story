@@ -109,6 +109,7 @@ let App = {
         grammar: () => this.grammarHint(),
         gist: () => this.sentenceGist(),
         structure: () => this.openStructure(),
+        chunkReading: () => this.chunkReading(),
         easyEnglish: () => this.easyEnglish(),
         ask: () => this.askFreeQuestion(),
         study: () => this.openStudy(),
@@ -575,6 +576,7 @@ let App = {
         <button class="qm-btn word" data-action="word">📖 단어 힌트</button>
         <button class="qm-btn grammar" data-action="grammar">🔍 구문 힌트</button>
         <button class="qm-btn structure" data-action="structure">🏷️ 구조 분석</button>
+        <button class="qm-btn chunk" data-action="chunkReading">✂️ 끊어 읽기</button>
         <button class="qm-btn easy" data-action="easyEnglish">🟢 쉬운 영어</button>
         <button class="qm-btn gist" data-action="gist">📋 문장 요지</button>
         <button class="qm-btn ask" data-action="ask">💬 자유 질문</button>
@@ -664,6 +666,22 @@ let App = {
       return;
     }
     result.textContent = `🟢 ${data.easyEn}`;
+  },
+
+  // 영어 어순 그대로 의미 단위로 끊어 보여준다(후치수식·관계절 훈련).
+  async chunkReading() {
+    const result = $('hint-result');
+    result.style.display = 'block';
+    result.textContent = '끊어 읽는 중...';
+    this._logHelp('helpStepsUsed');
+    const data = await AI.chunkReading(this.selectedSentence.text);
+    if (data.error) {
+      result.textContent = '⚠️ ' + (data.message || '실패');
+      return;
+    }
+    result.innerHTML = `<div class="chunk-list">` + data.groups.map(g =>
+      `<div class="chunk-row"><span class="chunk-en">${escapeHtml(g.en || '')}</span><span class="chunk-ko">${escapeHtml(g.ko || '')}</span></div>`
+    ).join('') + `</div>`;
   },
 
   // 문장에 대해 AI에게 자유롭게 질문하는 입력칸을 연다.

@@ -129,6 +129,10 @@ code{font-family:var(--font-mono);font-size:.85em;background:var(--bg4);padding:
 .book-del{position:absolute;top:8px;right:8px;width:26px;height:26px;border:none;border-radius:50%;background:var(--bg4);color:var(--tx3);font-size:13px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:0;transition:var(--t)}
 .book-card:hover .book-del{opacity:1}
 .book-del:hover{background:var(--a3);color:var(--on-accent)}
+.diff-badge{position:absolute;top:8px;left:8px;padding:2px 8px;border-radius:10px;font-size:var(--t-meta);font-weight:600;letter-spacing:.02em;color:#fff}
+.diff-badge.green{background:#3f7d4f}
+.diff-badge.yellow{background:#b3812b}
+.diff-badge.red{background:#a6451e}
 .upload-area{grid-column:1/-1;border:2px dashed var(--bd2);border-radius:var(--r-md);padding:48px;text-align:center;cursor:pointer;transition:var(--t);color:var(--tx3);background:var(--bg3)}
 .upload-area:hover{border-color:var(--a0);color:var(--a0);background:var(--bg4)}
 .upload-area input{display:none}

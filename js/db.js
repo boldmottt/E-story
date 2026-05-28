@@ -41,6 +41,8 @@ async function addBook(file, content) {
 
   // H2/M9: Use bulkAdd for sentences instead of serial adds
   const allSentences = [];
+  let wordCount = 0;
+  let longSentenceCount = 0;
 
   for (let i = 0; i < chunks.length; i++) {
     const cid = await DB.chunks.add({
@@ -51,13 +53,16 @@ async function addBook(file, content) {
     // Split chunk into sentences
     const sents = splitSentences(chunks[i].text);
     for (let j = 0; j < sents.length; j++) {
+      const words = sents[j].text.split(/\s+/).filter(Boolean).length;
+      wordCount += words;
+      if (words > 25) longSentenceCount++;
       allSentences.push({
         bookId: id, chunkId: cid, index: j,
         text: sents[j].text, para: sents[j].para, startOffset: 0, endOffset: 0
       });
     }
   }
-  
+
   // Bulk add all sentences at once (M9 fix)
   if (allSentences.length) {
     // Split into chunks of 500 to avoid write limits
@@ -65,8 +70,18 @@ async function addBook(file, content) {
       await DB.sentences.bulkAdd(allSentences.slice(i, i + 500));
     }
   }
-  
-  await DB.books.update(id, { totalChunks: chunks.length, updatedAt: Date.now() });
+
+  const sentenceCount = allSentences.length;
+  // Local difficulty stats (non-indexed fields; no schema bump needed).
+  // CEFR/band are filled in lazily on first open via AI.analyzeDifficulty.
+  await DB.books.update(id, {
+    totalChunks: chunks.length,
+    wordCount,
+    sentenceCount,
+    avgSentenceLen: sentenceCount ? Math.round(wordCount / sentenceCount) : 0,
+    longSentenceRatio: sentenceCount ? +(longSentenceCount / sentenceCount).toFixed(2) : 0,
+    updatedAt: Date.now()
+  });
   return id;
 }
 
@@ -80,6 +95,10 @@ async function getBook(id) {
 
 async function updateBookProgress(id, chunk, offset) {
   await DB.books.update(id, { currentChunk: chunk, currentOffset: offset, updatedAt: Date.now() });
+}
+
+async function updateBook(id, fields) {
+  await DB.books.update(id, { ...fields, updatedAt: Date.now() });
 }
 
 // H4: Delete book with full cascade

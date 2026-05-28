@@ -236,8 +236,13 @@ let App = {
 
     books.forEach(book => {
       const pct = book.totalChunks > 0 ? Math.round((book.currentChunk / book.totalChunks) * 100) : 0;
+      const bandLabel = { green: '쉬움', yellow: '보통', red: '어려움' };
+      const badge = book.difficultyBand
+        ? `<span class="diff-badge ${book.difficultyBand}" title="적합도: ${bandLabel[book.difficultyBand] || ''}">${escapeHtml(book.estimatedCefr || '')}</span>`
+        : '';
       html += `<div class="book-card" data-id="${book.id}">
         <button class="book-del" data-action="delete" data-id="${book.id}" title="책 삭제" aria-label="책 삭제">✕</button>
+        ${badge}
         <div class="title">${escapeHtml(book.title)}</div>
         <div class="author">${escapeHtml(book.fileName)}</div>
         <div class="progress"><div class="progress-fill" style="width:${pct}%"></div></div>
@@ -353,6 +358,7 @@ let App = {
 
     this.renderReader();
     this.loadChapterSummary();
+    this.ensureDifficulty();
     this._startReadingSession();
 
     // Restore scroll position
@@ -361,6 +367,25 @@ let App = {
         window.scrollTo({ top: this.currentBook.currentOffset, behavior: 'instant' });
       }, 50);
     }
+  },
+
+  // Lazily estimate book difficulty (CEFR + green/yellow/red) on first open,
+  // using only the first chunk as a sample. Cached on the book record so it
+  // runs once. Silent in demo mode (no key) — no badge appears.
+  async ensureDifficulty() {
+    const book = this.currentBook;
+    if (!book || book.difficultyBand) return;
+    const sample = this.currentChunks?.[0]?.content;
+    if (!sample) return;
+    const r = await AI.analyzeDifficulty(sample);
+    if (!r || r.error || !r.estimatedCefr) return;
+    const fields = {
+      estimatedCefr: r.estimatedCefr,
+      difficultyBand: r.difficultyBand || 'yellow',
+      difficultyNote: r.rationaleKo || ''
+    };
+    await updateBook(book.id, fields);
+    Object.assign(this.currentBook, fields);
   },
 
   // Group sentences into real <p> blocks by paragraph index.

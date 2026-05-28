@@ -79,6 +79,8 @@ code{font-family:var(--font-mono);font-size:.85em;background:var(--bg4);padding:
 .ch-nav-btn:disabled{opacity:.4;cursor:default}
 .ch-nav-btn:hover:not(:disabled){background:var(--bg4);color:var(--tx);border-color:var(--bd2)}
 .ch-label{font-size:var(--t-sm);color:var(--tx3);flex:1;text-align:center;font-variant-numeric:tabular-nums}
+.page-nav{display:flex;gap:8px;margin-top:24px;align-items:center}
+.page-nav .page-btn{padding:8px 18px}
 .mode-selector{display:flex;gap:6px;margin-bottom:20px}
 .mode-btn{padding:6px 16px;border:1px solid var(--bd);border-radius:999px;font-size:var(--t-sm);font-weight:500;cursor:pointer;font-family:var(--font);background:var(--bg3);color:var(--tx2);transition:var(--t)}
 .mode-btn:hover{border-color:var(--bd2);color:var(--tx)}

@@ -372,6 +372,7 @@ let App = {
     $('reader-page').classList.add('active');
     this.switchView('reader');
 
+    this._page = 0;
     this.renderReader();
     this.loadChapterSummary();
     this.loadWarmup();
@@ -408,14 +409,44 @@ let App = {
     Object.assign(this.currentBook, fields);
   },
 
-  // Group sentences into real <p> blocks by paragraph index.
-  // Legacy books (no `para` field) fall back to a single paragraph.
+  // Paragraphs shown per page within a chunk (keeps each screen short).
+  PARAS_PER_PAGE: 2,
+
+  // Ordered list of unique paragraph keys in the current chunk.
+  _paraKeys() {
+    return [...new Set((this.currentSentences || []).map(s => s.para ?? 0))];
+  },
+
+  _totalPages() {
+    return Math.max(1, Math.ceil(this._paraKeys().length / this.PARAS_PER_PAGE));
+  },
+
+  // The paragraph keys visible on the current page.
+  _currentPageParas() {
+    const keys = this._paraKeys();
+    const start = (this._page || 0) * this.PARAS_PER_PAGE;
+    return new Set(keys.slice(start, start + this.PARAS_PER_PAGE));
+  },
+
+  // Sentences (with their global index) visible on the current page — used by TTS.
+  _visibleSentences() {
+    const pageParas = this._currentPageParas();
+    const out = [];
+    (this.currentSentences || []).forEach((s, i) => {
+      if (pageParas.has(s.para ?? 0)) out.push({ s, i });
+    });
+    return out;
+  },
+
+  // Group the CURRENT PAGE's sentences into <p> blocks. data-index stays the
+  // global index into currentSentences so click/TTS stay correct across pages.
   renderParagraphs() {
-    const sents = this.currentSentences;
+    const pageParas = this._currentPageParas();
     let html = '';
     let curPara = null;
-    sents.forEach((sent, i) => {
+    (this.currentSentences || []).forEach((sent, i) => {
       const p = sent.para ?? 0;
+      if (!pageParas.has(p)) return;
       if (p !== curPara) {
         if (curPara !== null) html += '</p>';
         html += '<p>';
@@ -425,6 +456,40 @@ let App = {
     });
     if (curPara !== null) html += '</p>';
     return html || '<p></p>';
+  },
+
+  // Page nav markup (within-chunk). Crosses chunk boundaries at the ends.
+  _renderPageNav() {
+    const total = this._totalPages();
+    const page = this._page || 0;
+    const atFirst = page <= 0 && this.currentSelectedChunkIndex <= 0;
+    const atLast = page >= total - 1 && this.currentSelectedChunkIndex >= this.currentChunks.length - 1;
+    return `
+      <button class="topbar-btn page-btn" data-page="prev"${atFirst ? ' disabled' : ''}>◀ 이전</button>
+      <span class="ch-label">${page + 1} / ${total} 쪽</span>
+      <button class="topbar-btn page-btn" data-page="next"${atLast ? ' disabled' : ''}>다음 ▶</button>`;
+  },
+
+  // Move within the chunk by page; at the edges, move to the adjacent chunk.
+  turnPage(dir) {
+    const total = this._totalPages();
+    const page = this._page || 0;
+    if (dir === 'next') {
+      if (page < total - 1) { this._page = page + 1; this._renderPage(); }
+      else this.goToChunk(this.currentSelectedChunkIndex + 1, 'first');
+    } else {
+      if (page > 0) { this._page = page - 1; this._renderPage(); }
+      else this.goToChunk(this.currentSelectedChunkIndex - 1, 'last');
+    }
+  },
+
+  // Re-render only the text + page nav (keeps warmup/summary/goal intact).
+  _renderPage() {
+    const rt = $('reader-text');
+    if (rt) rt.innerHTML = this.renderParagraphs();
+    const nav = $('page-nav');
+    if (nav) nav.innerHTML = this._renderPageNav();
+    window.scrollTo({ top: 0, behavior: 'instant' });
   },
 
   renderReader() {
@@ -471,6 +536,7 @@ let App = {
       <div class="reader-text" id="reader-text">
         ${this.renderParagraphs()}
       </div>
+      <div class="page-nav" id="page-nav">${this._renderPageNav()}</div>
     `;
     
     // Single event delegation for wrap
@@ -483,6 +549,12 @@ let App = {
           return;
         }
         
+        const pageBtn = e.target.closest('.page-btn');
+        if (pageBtn) {
+          this.turnPage(pageBtn.dataset.page);
+          return;
+        }
+
         const modeBtn = e.target.closest('.mode-btn');
         if (modeBtn) {
           this.setReaderMode(modeBtn.dataset.mode);
@@ -520,7 +592,7 @@ let App = {
     }
   },
 
-  goToChunk(index) {
+  goToChunk(index, pagePos = 'first') {
     if (index < 0 || index >= this.currentChunks.length) return;
     if (index === this.currentSelectedChunkIndex) return;
 
@@ -534,13 +606,15 @@ let App = {
     this.currentSelectedChunkIndex = index;
     this.currentChunk = this.currentChunks[index];
     this._startReadingSession();
-    
+
     // Update AI reading context
     AI.setReadingContext(this.currentBook.title, index, this.currentChunks.length);
-    
+
     // Load sentences for new chunk
     getSentences(this.currentChunk.id).then(sents => {
       this.currentSentences = sents;
+      // Land on the first or last page depending on nav direction.
+      this._page = pagePos === 'last' ? this._totalPages() - 1 : 0;
       this.renderReader();
       this.loadChapterSummary();
       this.loadWarmup();
@@ -586,12 +660,12 @@ let App = {
     this._phraseMode = false;
     this._phraseSel = [];
 
-    // Highlight the sentence
+    // Highlight the sentence (locate by data-index — paging renders a subset)
     document.querySelectorAll('.sent').forEach(s => s.classList.remove('active'));
-    const sentEls = document.querySelectorAll('.sent');
-    if (sentEls[index]) sentEls[index].classList.add('active');
+    const activeEl = document.querySelector(`.sent[data-index="${index}"]`);
+    if (activeEl) activeEl.classList.add('active');
 
-    const rect = sentEls[index]?.getBoundingClientRect();
+    const rect = activeEl?.getBoundingClientRect();
     const menu = $('quick-menu');
 
     // Generate word tokens for each word in the sentence
@@ -1682,7 +1756,8 @@ let App = {
 
   /* ===== TTS Controls ===== */
   startTTS() {
-    const texts = this.currentSentences.map(s => s.text);
+    // Read only the sentences on the visible page so highlighting matches.
+    const texts = this._visibleSentences().map(v => v.s.text);
     TTS.startReading(texts, 0, (idx) => {
       document.querySelectorAll('.sent').forEach((s, i) => {
         s.classList.toggle('highlighted', i === idx);

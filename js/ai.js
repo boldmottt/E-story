@@ -268,6 +268,21 @@ const AI = {
     });
   },
 
+  /** Break the sentence into sense groups in ENGLISH order, each with a tiny
+   *  Korean gloss. Trains Korean readers to parse English left-to-right
+   *  (후치수식·관계절) instead of reordering into Korean. */
+  async chunkReading(sentence) {
+    const key = this._cacheKey('cr', sentence);
+    return this._cached(key, async () => {
+      const r = await this._call([
+        { role: 'system', content: 'Return JSON: { "groups": [ { "en": "...", "ko": "..." } ] }' },
+        { role: 'user', content: `Sentence: "${sentence}"` }
+      ], '이 영어 문장을 의미 단위(sense group)로 끊어라. groups 배열에 원문 어순 그대로 각 덩어리를 넣는다. en = 그 영어 덩어리(원문 단어 그대로), ko = 그 덩어리의 아주 짧은 한국어 뜻. 한국어 어순으로 재배열하지 말고 영어 순서를 유지한다. 보통 3~7개 덩어리. NO spoilers, 문장 밖 맥락 금지.');
+      if (r && !r.error && Array.isArray(r.groups) && r.groups.length) return r;
+      return { error: true, code: 'unknown', message: '(API 연결을 확인해주세요)' };
+    });
+  },
+
   /** Model's OWN Korean translations of the English sentence, independent of
    *  the user's attempt — used for the final comparison view so 직역/의역이
    *  사용자 입력을 베끼지 않고 서로 구분된다. */
@@ -372,6 +387,23 @@ Return JSON: { "correctedEn": "...", "notesKo": ["..."], "usedTargetExpression":
     });
   },
 
+  /** Pre-reading warm-up. "Previously" = Korean recap of the PREVIOUS chunk
+   *  (already read, so no spoiler). "expressions" = key phrases to watch for
+   *  in the upcoming chunk (surface phrases only, no plot reveal). */
+  async warmup(prevText, currentText) {
+    const prev = (prevText || '').slice(0, 3000);
+    const cur = (currentText || '').slice(0, 3000);
+    const key = this._cacheKey('wu', prev.slice(0, 200), cur.slice(0, 200));
+    return this._cached(key, async () => {
+      const r = await this._call([
+        { role: 'system', content: 'Return JSON: { "previouslyKo": "...", "expressions": [ { "en": "...", "ko": "..." } ] }' },
+        { role: 'user', content: JSON.stringify({ previousChapter: prev, upcomingChapter: cur }) }
+      ], 'previouslyKo = 이전 챕터(previousChapter)에서 무슨 일이 있었는지 한국어 2~3문장 요약("지난 이야기"). 이전 챕터가 비어 있으면 빈 문자열. expressions = 다가올 챕터(upcomingChapter)에서 눈여겨볼 핵심 영어 표현 3~5개(en=표현, ko=짧은 뜻). 표현은 표면적 어구만 뽑고 줄거리 전개·결말을 누설하지 마라. NO spoilers about upcoming events.');
+      if (r && !r.error) return r;
+      return { error: true };
+    });
+  },
+
   /** Estimate reading difficulty from a SAMPLE of the book (not the whole text).
    *  Returns CEFR level + a green/yellow/red suitability band. */
   async analyzeDifficulty(sampleText) {
@@ -409,6 +441,12 @@ Return JSON: { "correctedEn": "...", "notesKo": ["..."], "usedTargetExpression":
     }
     if (lastMsg.includes('simpler English')) {
       return { easyEn: '⚙️ Set an API key in Settings to use this.' };
+    }
+    if (lastMsg.includes('upcomingChapter')) {
+      return { error: true };
+    }
+    if (lastMsg.startsWith('Sentence:')) {
+      return { groups: [{ en: '⚙️', ko: '설정에서 API 키를 등록해주세요.' }] };
     }
     return { gistKo: '⚙️ 설정에서 API 키를 등록해주세요.' };
   }

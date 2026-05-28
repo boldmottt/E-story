@@ -205,6 +205,7 @@ let App = {
       vocabulary: () => this.renderVocabulary(),
       queue: () => this.renderQueue(),
       history: () => this.renderHistory(),
+      report: () => this.renderReport(),
       settings: () => this.loadSettings()
     };
     renderers[view]?.();
@@ -222,6 +223,7 @@ let App = {
       vocabulary: '📖 단어장',
       queue: '⏰ 나중에 공부',
       history: '📝 피드백 이력',
+      report: '📊 리포트',
       settings: '⚙️ 설정'
     };
     $('topbar-title').textContent = titles[view] || 'E-Story';
@@ -1473,6 +1475,46 @@ let App = {
           <div class="hi-meta"><span>${new Date(s.createdAt).toLocaleString()}</span></div>
         </div>`;
     });
+  },
+
+  // 도움 의존도 리포트: "도움 없이 읽은 양"이 늘고 있는지를 보여준다(North Star).
+  async renderReport() {
+    const body = $('report-body');
+    if (!body) return;
+    body.innerHTML = '🔄 집계 중...';
+    const s = await getDependencyStats();
+
+    if (s.all.sessions === 0) {
+      body.innerHTML = '<div class="review-empty"><div class="icon">📊</div>아직 읽기 기록이 없습니다.<br>책을 읽으면 도움 의존도가 여기에 쌓입니다.</div>';
+      return;
+    }
+
+    const fmt = n => (n || 0).toLocaleString();
+    const trendInfo = {
+      down: { cls: 'good', txt: '↓ 도움 의존도가 줄고 있어요. 잘하고 있어요!' },
+      up:   { cls: 'warn', txt: '↑ 지난주보다 도움을 더 썼어요. 천천히 줄여봐요.' },
+      flat: { cls: '',     txt: '→ 지난주와 비슷한 수준이에요.' },
+      new:  { cls: '',     txt: '아직 비교할 지난주 데이터가 부족해요. 계속 읽어보세요!' }
+    }[s.trend] || { cls: '', txt: '' };
+
+    const card = (title, b) => `
+      <div class="report-card">
+        <div class="rc-title">${title}</div>
+        <div class="rc-big">${b.rate}<span class="rc-unit">회 / 1000단어</span></div>
+        <div class="rc-sub">읽은 단어 ${fmt(b.words)} · 세션 ${fmt(b.sessions)}</div>
+        <div class="rc-break">📖 사전 ${fmt(b.dict)} · 🌐 번역 ${fmt(b.trans)} · 🔍 힌트 ${fmt(b.help)}</div>
+      </div>`;
+
+    body.innerHTML = `
+      <div class="report-note">핵심 지표는 <b>1000단어당 도움 사용 횟수</b>입니다. 낮을수록 더 독립적으로 읽고 있다는 뜻이에요.</div>
+      <div class="report-trend ${trendInfo.cls}">${trendInfo.txt}</div>
+      <div class="report-grid">
+        ${card('오늘', s.today)}
+        ${card('최근 7일', s.week)}
+        ${card('지난 주', s.prevWeek)}
+        ${card('전체', s.all)}
+      </div>
+    `;
   },
 
   /* ===== Backup ===== */

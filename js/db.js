@@ -307,6 +307,53 @@ async function endReadingSession(sessionId, endChunk, wordsRead) {
   });
 }
 
+// Aggregate reading sessions into help-dependency stats. North Star: the rate
+// of help (dictionary + translation + hint steps) per 1000 words read should
+// fall over time. Returns today, this-week, and last-week buckets + a trend.
+async function getDependencyStats() {
+  const sessions = await DB.readingSessions.toArray();
+  const now = Date.now();
+  const DAY = 86400000;
+  const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
+  const todayTs = startOfToday.getTime();
+  const weekTs = now - 7 * DAY;
+  const prevWeekTs = now - 14 * DAY;
+
+  const empty = () => ({ words: 0, dict: 0, trans: 0, help: 0, sessions: 0 });
+  const add = (b, s) => {
+    b.words += s.wordsRead || 0;
+    b.dict += s.dictionaryClicks || 0;
+    b.trans += s.translationClicks || 0;
+    b.help += s.helpStepsUsed || 0;
+    b.sessions += 1;
+  };
+  const rate = b => b.words > 0 ? +(((b.dict + b.trans + b.help) / b.words) * 1000).toFixed(1) : 0;
+
+  const today = empty(), week = empty(), prevWeek = empty(), all = empty();
+  for (const s of sessions) {
+    const t = s.startedAt || 0;
+    add(all, s);
+    if (t >= todayTs) add(today, s);
+    if (t >= weekTs) add(week, s);
+    else if (t >= prevWeekTs) add(prevWeek, s);
+  }
+
+  const weekRate = rate(week), prevRate = rate(prevWeek);
+  let trend = 'flat';
+  if (prevWeek.sessions > 0 && week.sessions > 0) {
+    if (weekRate < prevRate) trend = 'down';      // good: less dependency
+    else if (weekRate > prevRate) trend = 'up';   // more dependency
+  } else trend = 'new';
+
+  return {
+    today: { ...today, rate: rate(today) },
+    week: { ...week, rate: weekRate },
+    prevWeek: { ...prevWeek, rate: prevRate },
+    all: { ...all, rate: rate(all) },
+    trend
+  };
+}
+
 /* ===== Feedback ===== */
 async function saveFeedbackSession(bookId, sentenceId, originalSentence, attempts, finalTranslation, literal, natural, storyNote) {
   const sid = await DB.feedbackSessions.add({

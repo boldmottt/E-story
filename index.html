@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,500;0,7..72,600;1,7..72,400;1,7..72,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=1.14">
+<link rel="stylesheet" href="css/style.css?v=1.15">
 </head>
 <body>
 
@@ -29,6 +29,9 @@
     </div>
     <div class="nav-item" data-view="history">
       <span class="ico">📝</span><span>피드백 이력</span>
+    </div>
+    <div class="nav-item" data-view="report">
+      <span class="ico">📊</span><span>리포트</span>
     </div>
     <div class="nav-item" data-view="settings">
       <span class="ico">⚙️</span><span>설정</span>
@@ -93,6 +96,12 @@
   <div class="content" id="history-page">
     <h2 class="page-heading">📝 피드백 이력</h2>
     <div class="history-list" id="history-list"></div>
+  </div>
+
+  <!-- ===== Report Page ===== -->
+  <div class="content" id="report-page">
+    <h2 class="page-heading">📊 리포트</h2>
+    <div class="report-body" id="report-body"></div>
   </div>
 
   <!-- ===== Settings Page ===== -->
@@ -211,12 +220,12 @@
 </div>
 
 <!-- ===== Scripts (cache-busting: bump v=1.1 on deploy to force fresh files) ===== -->
-<script src="vendor/dexie.js?v=1.14"></script>
-<script src="js/db.js?v=1.14"></script>
-<script src="js/ai.js?v=1.14"></script>
-<script src="js/tts.js?v=1.14"></script>
-<script src="js/sync.js?v=1.14"></script>
-<script src="js/app.js?v=1.14"></script>
+<script src="vendor/dexie.js?v=1.15"></script>
+<script src="js/db.js?v=1.15"></script>
+<script src="js/ai.js?v=1.15"></script>
+<script src="js/tts.js?v=1.15"></script>
+<script src="js/sync.js?v=1.15"></script>
+<script src="js/app.js?v=1.15"></script>
 
 </body>
 </html>

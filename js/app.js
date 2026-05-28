@@ -117,6 +117,7 @@ let App = {
         grammar: () => this.grammarHint(),
         gist: () => this.sentenceGist(),
         structure: () => this.openStructure(),
+        koreanGrammar: () => this.koreanGrammar(),
         chunkReading: () => this.chunkReading(),
         easyEnglish: () => this.easyEnglish(),
         ask: () => this.askFreeQuestion(),
@@ -604,6 +605,7 @@ let App = {
         <button class="qm-btn phrase" data-action="phraseMode">🔗 구 저장</button>
         <button class="qm-btn grammar" data-action="grammar">🔍 구문 힌트</button>
         <button class="qm-btn structure" data-action="structure">🏷️ 구조 분석</button>
+        <button class="qm-btn kgram" data-action="koreanGrammar">🇰🇷 한국인 포인트</button>
         <button class="qm-btn chunk" data-action="chunkReading">✂️ 끊어 읽기</button>
         <button class="qm-btn easy" data-action="easyEnglish">🟢 쉬운 영어</button>
         <button class="qm-btn gist" data-action="gist">📋 문장 요지</button>
@@ -763,6 +765,22 @@ let App = {
     result.innerHTML = `<div class="chunk-list">` + data.groups.map(g =>
       `<div class="chunk-row"><span class="chunk-en">${escapeHtml(g.en || '')}</span><span class="chunk-ko">${escapeHtml(g.ko || '')}</span></div>`
     ).join('') + `</div>`;
+  },
+
+  // 한국인이 약한 포인트(대명사 지시·완료시제·후치수식·무생물 주어 등)를 짚어준다.
+  async koreanGrammar() {
+    const result = $('hint-result');
+    result.style.display = 'block';
+    result.textContent = '한국인 포인트 분석 중...';
+    this._logHelp('helpStepsUsed');
+    const data = await AI.koreanGrammar(this.selectedSentence.text);
+    if (data.error) {
+      result.textContent = '⚠️ ' + (data.message || '실패');
+      return;
+    }
+    result.innerHTML = data.points.map(p =>
+      `<div class="kg-row"><span class="kg-type">${escapeHtml(p.type || '')}</span><div class="kg-ko">${escapeHtml(p.ko || '')}</div></div>`
+    ).join('');
   },
 
   // 문장에 대해 AI에게 자유롭게 질문하는 입력칸을 연다.

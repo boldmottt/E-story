@@ -346,6 +346,21 @@ When finished, include literalTranslationKo, naturalTranslationKo, storyNoteKo.`
     });
   },
 
+  /** Gently correct the user's short English output (output practice).
+   *  Meaning-first, at most a few fixes — don't nitpick style. */
+  async correctOutput(userText, contextSentence) {
+    return await this._call([
+      { role: 'system', content: `You are a kind English tutor for a Korean learner who just read a sentence and wrote a short English response (a summary or a sentence using a new expression).
+Rules:
+1. Be encouraging. Do NOT nitpick — fix at most 5 things, meaning-first.
+2. correctedEn = a natural rewrite of their text (keep their intent/voice).
+3. notesKo = up to 3 short Korean notes on the most important fixes only. If it's already good, return [] or one praise note.
+4. usedTargetExpression = true if they reused vocabulary/phrasing from the context sentence.
+Return JSON: { "correctedEn": "...", "notesKo": ["..."], "usedTargetExpression": false }` },
+      { role: 'user', content: JSON.stringify({ userText, contextSentence }) }
+    ], 'Gently correct the learner\'s short English. Meaning-first, max 5 fixes, encouraging tone. NO spoilers.');
+  },
+
   async chapterSummary(text) {
     const key = this._cacheKey('cs', text.slice(0, 500));
     return this._cached(key, async () => {
@@ -388,6 +403,9 @@ When finished, include literalTranslationKo, naturalTranslationKo, storyNoteKo.`
     }
     if (lastMsg.includes('"sentence"') && lastMsg.includes('"question"')) {
       return { answerKo: '⚙️ 설정에서 API 키를 등록해주세요.' };
+    }
+    if (lastMsg.includes('"userText"')) {
+      return { correctedEn: '', notesKo: ['⚙️ 설정에서 API 키를 등록하면 교정을 받을 수 있어요.'], usedTargetExpression: false };
     }
     if (lastMsg.includes('simpler English')) {
       return { easyEn: '⚙️ Set an API key in Settings to use this.' };

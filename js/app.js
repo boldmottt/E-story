@@ -363,6 +363,7 @@ let App = {
     this.renderReader();
     this.loadChapterSummary();
     this.loadWarmup();
+    this.loadDailyGoal();
     this.ensureDifficulty();
     this._startReadingSession();
     this._maybeCoachToast();
@@ -430,6 +431,7 @@ let App = {
         <div class="ch-title">${escapeHtml(this.currentChunk.title)}</div>
         <div class="book-title">${escapeHtml(this.currentBook.title)}</div>
       </div>
+      <div id="daily-goal" class="daily-goal" hidden></div>
       <div id="chapter-warmup" class="chapter-warmup" hidden></div>
       <div id="chapter-summary" class="chapter-summary" hidden></div>
       <div class="ch-nav">
@@ -521,6 +523,7 @@ let App = {
       this.renderReader();
       this.loadChapterSummary();
       this.loadWarmup();
+      this.loadDailyGoal();
       window.scrollTo({ top: 0, behavior: 'instant' });
     });
     
@@ -1151,6 +1154,30 @@ let App = {
     }
   },
 
+  // 오늘의 독서 목표: 과거 읽기 속도로 "오늘 N단어(≈M분)"를 추천하고
+  // 오늘 읽은 양 대비 진행바를 보여준다. 속도 데이터가 없으면 기본값 사용.
+  async loadDailyGoal() {
+    const el = $('daily-goal');
+    if (!el) return;
+    const s = await getSettings();
+    const minutes = s.dailyMinutes || 20;
+    const wpm = (await getReadingSpeed()) || 150;
+    const goal = Math.max(100, Math.round((wpm * minutes) / 50) * 50);
+    let readToday = 0;
+    try { readToday = (await getDependencyStats()).today.words || 0; } catch (e) {}
+    const pct = Math.min(100, Math.round((readToday / goal) * 100));
+    const done = readToday >= goal;
+    el.hidden = false;
+    el.innerHTML = `
+      <div class="dg-row">
+        <span class="dg-label">📅 오늘의 독서 목표</span>
+        <span class="dg-val">${readToday.toLocaleString()} / ${goal.toLocaleString()}단어 · 약 ${minutes}분</span>
+      </div>
+      <div class="dg-bar"><div class="dg-fill" style="width:${pct}%"></div></div>
+      ${done ? '<div class="dg-done">🎉 오늘 목표를 달성했어요!</div>' : ''}
+    `;
+  },
+
   // 읽기 전 예열: "지난 이야기"(이전 챕터 요약) + 다가올 챕터의 핵심 표현.
   // 데모/오류 시 조용히 숨긴다. 사용자가 접으면 그 챕터에서는 다시 안 뜬다.
   async loadWarmup() {
@@ -1498,6 +1525,7 @@ let App = {
     $('settings-fontsize').value = s.fontSize || 16;
     $('settings-fs-val').textContent = s.fontSize + 'px';
     $('settings-card-cap').value = s.dailyCardCap ?? 5;
+    $('settings-daily-min').value = s.dailyMinutes ?? 20;
   },
 
   async saveSettings() {
@@ -1509,6 +1537,7 @@ let App = {
       ttsRate: parseFloat($('settings-tts-rate').value),
       fontSize: parseInt($('settings-fontsize').value),
       dailyCardCap: parseInt($('settings-card-cap').value) || 0,
+      dailyMinutes: parseInt($('settings-daily-min').value) || 20,
       theme: 'dark', lineHeight: 1.9
     };
     

@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,500;0,7..72,600;1,7..72,400;1,7..72,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=1.15">
+<link rel="stylesheet" href="css/style.css?v=1.16">
 </head>
 <body>
 
@@ -157,6 +157,11 @@
         <input type="number" id="settings-card-cap" min="0" max="100" step="1" class="w-240">
       </div>
       <div class="settings-note">하루에 새로 만들 단어 카드 수를 제한합니다. 한도에 도달하면 추가가 막힙니다(0 = 무제한). 복습 부채가 쌓이는 것을 막아줍니다.</div>
+      <div class="settings-row">
+        <label>하루 목표 독서 시간(분)</label>
+        <input type="number" id="settings-daily-min" min="5" max="180" step="5" class="w-240">
+      </div>
+      <div class="settings-note">읽기 속도를 추정해 "오늘 N단어" 목표를 추천합니다.</div>
     </div>
 
     <div class="settings-group">
@@ -220,12 +225,12 @@
 </div>
 
 <!-- ===== Scripts (cache-busting: bump v=1.1 on deploy to force fresh files) ===== -->
-<script src="vendor/dexie.js?v=1.15"></script>
-<script src="js/db.js?v=1.15"></script>
-<script src="js/ai.js?v=1.15"></script>
-<script src="js/tts.js?v=1.15"></script>
-<script src="js/sync.js?v=1.15"></script>
-<script src="js/app.js?v=1.15"></script>
+<script src="vendor/dexie.js?v=1.16"></script>
+<script src="js/db.js?v=1.16"></script>
+<script src="js/ai.js?v=1.16"></script>
+<script src="js/tts.js?v=1.16"></script>
+<script src="js/sync.js?v=1.16"></script>
+<script src="js/app.js?v=1.16"></script>
 
 </body>
 </html>

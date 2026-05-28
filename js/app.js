@@ -109,6 +109,7 @@ let App = {
         grammar: () => this.grammarHint(),
         gist: () => this.sentenceGist(),
         structure: () => this.openStructure(),
+        easyEnglish: () => this.easyEnglish(),
         ask: () => this.askFreeQuestion(),
         study: () => this.openStudy(),
         queue: () => this.queueLater()
@@ -574,6 +575,7 @@ let App = {
         <button class="qm-btn word" data-action="word">📖 단어 힌트</button>
         <button class="qm-btn grammar" data-action="grammar">🔍 구문 힌트</button>
         <button class="qm-btn structure" data-action="structure">🏷️ 구조 분석</button>
+        <button class="qm-btn easy" data-action="easyEnglish">🟢 쉬운 영어</button>
         <button class="qm-btn gist" data-action="gist">📋 문장 요지</button>
         <button class="qm-btn ask" data-action="ask">💬 자유 질문</button>
         <button class="qm-btn study" data-action="study">✍️ 해석해보기</button>
@@ -646,6 +648,22 @@ let App = {
       return;
     }
     result.textContent = `📋 ${data.gistKo}`;
+  },
+
+  // 한국어로 바로 번역하지 않고, 더 쉬운 영어로 같은 뜻을 보여준다.
+  async easyEnglish() {
+    const result = $('hint-result');
+    result.style.display = 'block';
+    result.textContent = '쉬운 영어로 바꾸는 중...';
+    if (this.currentSessionId && typeof bumpSessionCounter === 'function') {
+      bumpSessionCounter(this.currentSessionId, 'helpStepsUsed');
+    }
+    const data = await AI.easyEnglish(this.selectedSentence.text);
+    if (data.error) {
+      result.textContent = '⚠️ ' + (data.message || '실패');
+      return;
+    }
+    result.textContent = `🟢 ${data.easyEn}`;
   },
 
   // 문장에 대해 AI에게 자유롭게 질문하는 입력칸을 연다.

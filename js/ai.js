@@ -254,6 +254,20 @@ const AI = {
     });
   },
 
+  /** Paraphrase the sentence into SIMPLER English (not Korean). Helps the
+   *  reader understand without leaning on translation — reduces dependency. */
+  async easyEnglish(sentence) {
+    const key = this._cacheKey('ee', sentence);
+    return this._cached(key, async () => {
+      const r = await this._call([
+        { role: 'system', content: 'Return JSON: { "easyEn": "..." }' },
+        { role: 'user', content: `Rewrite in simpler English: "${sentence}"` }
+      ], 'Rewrite this single sentence in SIMPLER English (around CEFR A2-B1): common words, shorter clauses, same meaning. Output English only — do NOT translate to Korean. One sentence. NO spoilers, no outside context.');
+      if (r && !r.error && r.easyEn) return r;
+      return { error: true, code: 'unknown', message: '(API 연결을 확인해주세요)' };
+    });
+  },
+
   /** Model's OWN Korean translations of the English sentence, independent of
    *  the user's attempt — used for the final comparison view so 직역/의역이
    *  사용자 입력을 베끼지 않고 서로 구분된다. */
@@ -374,6 +388,9 @@ When finished, include literalTranslationKo, naturalTranslationKo, storyNoteKo.`
     }
     if (lastMsg.includes('"sentence"') && lastMsg.includes('"question"')) {
       return { answerKo: '⚙️ 설정에서 API 키를 등록해주세요.' };
+    }
+    if (lastMsg.includes('simpler English')) {
+      return { easyEn: '⚙️ Set an API key in Settings to use this.' };
     }
     return { gistKo: '⚙️ 설정에서 API 키를 등록해주세요.' };
   }

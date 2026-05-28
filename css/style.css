@@ -88,6 +88,15 @@ code{font-family:var(--font-mono);font-size:.85em;background:var(--bg4);padding:
 .tts-val{font-size:var(--t-sm);color:var(--tx3);min-width:30px;font-variant-numeric:tabular-nums}
 #tts-rate{width:90px;accent-color:var(--a0)}
 .chapter-summary{margin-bottom:20px;padding:16px 18px;background:var(--bg3);border:1px solid var(--bd);border-left:3px solid var(--a2);border-radius:var(--r-md);font-size:var(--t-sm);line-height:1.65;color:var(--tx2)}
+.chapter-warmup{position:relative;margin-bottom:20px;padding:16px 18px;background:var(--bg3);border:1px solid var(--bd);border-left:3px solid var(--a0);border-radius:var(--r-md);font-size:var(--t-sm);line-height:1.65;color:var(--tx2)}
+.warmup-title{font-weight:700;color:var(--a0);margin-bottom:6px}
+.warmup-prev{margin-bottom:8px}
+.warmup-expr ul{margin:4px 0 0;padding-left:18px}
+.warmup-expr li{margin:2px 0}
+.we-en{font-family:var(--font-read);color:var(--tx)}
+.we-ko{color:var(--tx3)}
+.warmup-close{position:absolute;top:10px;right:10px;width:24px;height:24px;border:none;border-radius:50%;background:var(--bg4);color:var(--tx3);font-size:12px;line-height:1;cursor:pointer}
+.warmup-close:hover{background:var(--a3);color:var(--on-accent)}
 .cs-characters{margin-top:6px}
 .cs-scenes{margin-top:4px}
 .cs-expr{margin-top:4px}
@@ -163,7 +172,12 @@ code{font-family:var(--font-mono);font-size:.85em;background:var(--bg4);padding:
 .qm-btn.grammar{background:rgba(95,138,79,.16);color:var(--a1)}
 .qm-btn.gist{background:rgba(179,129,43,.16);color:var(--a2)}
 .qm-btn.structure{background:rgba(122,86,137,.16);color:var(--a4)}
+.qm-btn.chunk{background:rgba(60,125,116,.14);color:var(--a5)}
 .qm-btn.easy{background:rgba(95,138,79,.16);color:var(--a1)}
+.chunk-list{display:flex;flex-direction:column;gap:4px}
+.chunk-row{display:flex;justify-content:space-between;gap:10px;padding:5px 9px;background:var(--bg3);border-left:2px solid var(--a5);border-radius:4px}
+.chunk-en{font-family:var(--font-read);color:var(--tx)}
+.chunk-ko{color:var(--tx3);font-size:var(--t-sm);white-space:nowrap}
 .qm-btn.study{background:rgba(166,69,30,.14);color:var(--a0)}
 .qm-btn.ask{background:rgba(122,86,137,.14);color:var(--a4)}
 .qm-btn.queue{background:var(--bg4);color:var(--tx2)}
@@ -322,6 +336,23 @@ code{font-family:var(--font-mono);font-size:.85em;background:var(--bg4);padding:
 .history-item .hi-user{font-size:var(--t-sm);color:var(--a2);margin-bottom:5px}
 .history-item .hi-fb{font-size:var(--t-sm);color:var(--tx2);line-height:1.5}
 .history-item .hi-meta{font-size:var(--t-meta);color:var(--tx3);margin-top:8px;display:flex;gap:8px}
+
+/* ===== Report ===== */
+.report-note{font-size:var(--t-sm);color:var(--tx2);line-height:1.6;margin-bottom:14px}
+.coach-tip{display:flex;gap:8px;align-items:flex-start;padding:13px 16px;border-radius:var(--r-md);background:var(--bg3);border:1px solid var(--bd);border-left:3px solid var(--a4);font-size:var(--t-sm);line-height:1.6;color:var(--tx);margin-bottom:14px}
+.coach-tip.good{border-left-color:var(--a1)}
+.coach-tip.warn{border-left-color:var(--a2)}
+.coach-ico{flex:0 0 auto}
+.report-trend{padding:12px 16px;border-radius:var(--r-md);background:var(--bg3);border:1px solid var(--bd);border-left:3px solid var(--tx3);font-size:var(--t-sm);color:var(--tx);margin-bottom:18px}
+.report-trend.good{border-left-color:var(--a1);color:var(--a1)}
+.report-trend.warn{border-left-color:var(--a2);color:var(--a2)}
+.report-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px}
+.report-card{background:var(--bg3);border:1px solid var(--bd);border-radius:var(--r-md);padding:16px;box-shadow:var(--shadow-sm)}
+.report-card .rc-title{font-size:var(--t-sm);font-weight:600;color:var(--tx2);margin-bottom:8px}
+.report-card .rc-big{font-size:1.8rem;font-weight:700;color:var(--a0);font-variant-numeric:tabular-nums;font-family:var(--font-read)}
+.report-card .rc-unit{font-size:var(--t-sm);font-weight:500;color:var(--tx3);margin-left:4px}
+.report-card .rc-sub{font-size:var(--t-meta);color:var(--tx3);margin-top:4px;font-variant-numeric:tabular-nums}
+.report-card .rc-break{font-size:var(--t-meta);color:var(--tx2);margin-top:8px;font-variant-numeric:tabular-nums}
 
 /* ===== Toasts ===== */
 .toast-container{position:fixed;bottom:24px;right:24px;z-index:100;display:flex;flex-direction:column;gap:10px}

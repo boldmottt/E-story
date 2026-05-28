@@ -109,6 +109,7 @@ let App = {
         grammar: () => this.grammarHint(),
         gist: () => this.sentenceGist(),
         structure: () => this.openStructure(),
+        chunkReading: () => this.chunkReading(),
         easyEnglish: () => this.easyEnglish(),
         ask: () => this.askFreeQuestion(),
         study: () => this.openStudy(),
@@ -205,6 +206,7 @@ let App = {
       vocabulary: () => this.renderVocabulary(),
       queue: () => this.renderQueue(),
       history: () => this.renderHistory(),
+      report: () => this.renderReport(),
       settings: () => this.loadSettings()
     };
     renderers[view]?.();
@@ -222,6 +224,7 @@ let App = {
       vocabulary: '📖 단어장',
       queue: '⏰ 나중에 공부',
       history: '📝 피드백 이력',
+      report: '📊 리포트',
       settings: '⚙️ 설정'
     };
     $('topbar-title').textContent = titles[view] || 'E-Story';
@@ -359,8 +362,10 @@ let App = {
 
     this.renderReader();
     this.loadChapterSummary();
+    this.loadWarmup();
     this.ensureDifficulty();
     this._startReadingSession();
+    this._maybeCoachToast();
 
     // Restore scroll position
     if (this.currentBook.currentOffset) {
@@ -425,6 +430,7 @@ let App = {
         <div class="ch-title">${escapeHtml(this.currentChunk.title)}</div>
         <div class="book-title">${escapeHtml(this.currentBook.title)}</div>
       </div>
+      <div id="chapter-warmup" class="chapter-warmup" hidden></div>
       <div id="chapter-summary" class="chapter-summary" hidden></div>
       <div class="ch-nav">
         <button class="topbar-btn ch-nav-btn" data-dir="prev"${prevDisabled ? ' disabled' : ''}>◀ 이전</button>
@@ -514,6 +520,7 @@ let App = {
       this.currentSentences = sents;
       this.renderReader();
       this.loadChapterSummary();
+      this.loadWarmup();
       window.scrollTo({ top: 0, behavior: 'instant' });
     });
     
@@ -575,6 +582,7 @@ let App = {
         <button class="qm-btn word" data-action="word">📖 단어 힌트</button>
         <button class="qm-btn grammar" data-action="grammar">🔍 구문 힌트</button>
         <button class="qm-btn structure" data-action="structure">🏷️ 구조 분석</button>
+        <button class="qm-btn chunk" data-action="chunkReading">✂️ 끊어 읽기</button>
         <button class="qm-btn easy" data-action="easyEnglish">🟢 쉬운 영어</button>
         <button class="qm-btn gist" data-action="gist">📋 문장 요지</button>
         <button class="qm-btn ask" data-action="ask">💬 자유 질문</button>
@@ -664,6 +672,22 @@ let App = {
       return;
     }
     result.textContent = `🟢 ${data.easyEn}`;
+  },
+
+  // 영어 어순 그대로 의미 단위로 끊어 보여준다(후치수식·관계절 훈련).
+  async chunkReading() {
+    const result = $('hint-result');
+    result.style.display = 'block';
+    result.textContent = '끊어 읽는 중...';
+    this._logHelp('helpStepsUsed');
+    const data = await AI.chunkReading(this.selectedSentence.text);
+    if (data.error) {
+      result.textContent = '⚠️ ' + (data.message || '실패');
+      return;
+    }
+    result.innerHTML = `<div class="chunk-list">` + data.groups.map(g =>
+      `<div class="chunk-row"><span class="chunk-en">${escapeHtml(g.en || '')}</span><span class="chunk-ko">${escapeHtml(g.ko || '')}</span></div>`
+    ).join('') + `</div>`;
   },
 
   // 문장에 대해 AI에게 자유롭게 질문하는 입력칸을 연다.
@@ -1127,6 +1151,37 @@ let App = {
     }
   },
 
+  // 읽기 전 예열: "지난 이야기"(이전 챕터 요약) + 다가올 챕터의 핵심 표현.
+  // 데모/오류 시 조용히 숨긴다. 사용자가 접으면 그 챕터에서는 다시 안 뜬다.
+  async loadWarmup() {
+    const el = $('chapter-warmup');
+    if (!el) return;
+    el.hidden = true;
+    const idx = this.currentSelectedChunkIndex;
+    const cur = this.currentChunk?.content || '';
+    if (!cur || cur.length < 50) return;
+    if (this._warmupDismissed === `${this.currentBook?.id}:${idx}`) return;
+    const prev = idx > 0 ? (this.currentChunks[idx - 1]?.content || '') : '';
+    el.hidden = false;
+    el.innerHTML = '🔄 예열 불러오는 중...';
+    const r = await AI.warmup(prev, cur);
+    if (!r || r.error || (!r.previouslyKo && !(r.expressions?.length))) {
+      el.hidden = true;
+      return;
+    }
+    const exprs = Array.isArray(r.expressions) ? r.expressions : [];
+    el.innerHTML = `
+      <button class="warmup-close" title="접기" aria-label="접기">✕</button>
+      <div class="warmup-title">🔥 읽기 전 예열</div>
+      ${r.previouslyKo ? `<div class="warmup-prev"><b>지난 이야기</b> · ${escapeHtml(r.previouslyKo)}</div>` : ''}
+      ${exprs.length ? `<div class="warmup-expr"><b>오늘의 표현</b><ul>${exprs.map(e => `<li><span class="we-en">${escapeHtml(e.en || '')}</span> <span class="we-ko">${escapeHtml(e.ko || '')}</span></li>`).join('')}</ul></div>` : ''}
+    `;
+    el.querySelector('.warmup-close')?.addEventListener('click', () => {
+      el.hidden = true;
+      this._warmupDismissed = `${this.currentBook?.id}:${idx}`;
+    });
+  },
+
   _offerVocabSave() {
     const words = this.selectedSentence.text.split(' ').filter(w => w.length > 3);
     if (!words.length) return;
@@ -1511,6 +1566,82 @@ let App = {
           <div class="hi-meta"><span>${new Date(s.createdAt).toLocaleString()}</span></div>
         </div>`;
     });
+  },
+
+  // 도움 의존도 리포트: "도움 없이 읽은 양"이 늘고 있는지를 보여준다(North Star).
+  async renderReport() {
+    const body = $('report-body');
+    if (!body) return;
+    body.innerHTML = '🔄 집계 중...';
+    const s = await getDependencyStats();
+
+    if (s.all.sessions === 0) {
+      body.innerHTML = '<div class="review-empty"><div class="icon">📊</div>아직 읽기 기록이 없습니다.<br>책을 읽으면 도움 의존도가 여기에 쌓입니다.</div>';
+      return;
+    }
+
+    const fmt = n => (n || 0).toLocaleString();
+    const trendInfo = {
+      down: { cls: 'good', txt: '↓ 도움 의존도가 줄고 있어요. 잘하고 있어요!' },
+      up:   { cls: 'warn', txt: '↑ 지난주보다 도움을 더 썼어요. 천천히 줄여봐요.' },
+      flat: { cls: '',     txt: '→ 지난주와 비슷한 수준이에요.' },
+      new:  { cls: '',     txt: '아직 비교할 지난주 데이터가 부족해요. 계속 읽어보세요!' }
+    }[s.trend] || { cls: '', txt: '' };
+
+    const card = (title, b) => `
+      <div class="report-card">
+        <div class="rc-title">${title}</div>
+        <div class="rc-big">${b.rate}<span class="rc-unit">회 / 1000단어</span></div>
+        <div class="rc-sub">읽은 단어 ${fmt(b.words)} · 세션 ${fmt(b.sessions)}</div>
+        <div class="rc-break">📖 사전 ${fmt(b.dict)} · 🌐 번역 ${fmt(b.trans)} · 🔍 힌트 ${fmt(b.help)}</div>
+      </div>`;
+
+    const tip = this._coachTip(s);
+
+    body.innerHTML = `
+      <div class="report-note">핵심 지표는 <b>1000단어당 도움 사용 횟수</b>입니다. 낮을수록 더 독립적으로 읽고 있다는 뜻이에요.</div>
+      ${tip ? `<div class="coach-tip ${tip.cls}"><span class="coach-ico">🧭</span><span>${escapeHtml(tip.text)}</span></div>` : ''}
+      <div class="report-trend ${trendInfo.cls}">${trendInfo.txt}</div>
+      <div class="report-grid">
+        ${card('오늘', s.today)}
+        ${card('최근 7일', s.week)}
+        ${card('지난 주', s.prevWeek)}
+        ${card('전체', s.all)}
+      </div>
+    `;
+  },
+
+  // 책을 열 때 코치 제안을 토스트로 한 번만 살짝 띄운다(앱 세션당 1회).
+  async _maybeCoachToast() {
+    if (this._coachShown) return;
+    this._coachShown = true;
+    try {
+      const s = await getDependencyStats();
+      const tip = this._coachTip(s);
+      if (tip) this.showToast('🧭 ' + tip.text, tip.cls === 'good' ? 'success' : 'info');
+    } catch (e) { /* non-blocking */ }
+  },
+
+  // 적응형 코칭: 최근 읽기 패턴에서 가장 도움이 될 한 가지 제안을 고른다.
+  // 의미 있는 표본(주간 200단어 이상)이 없으면 null. 우선순위: 어휘 부담 →
+  // 번역 의존 → 잘하고 있을 때 분량 늘리기.
+  _coachTip(s) {
+    const b = (s.week && s.week.words >= 200) ? s.week : null;
+    if (!b) return null;
+    const per1k = n => (n / b.words) * 1000;
+    const dictRate = per1k(b.dict);
+    const transRate = per1k(b.trans);
+
+    if (dictRate >= 30) {
+      return { cls: 'warn', text: '어휘 부담이 큰 편이에요. 다음 챕터는 "읽기 전 예열"에서 핵심 표현을 먼저 훑고 시작해보세요.' };
+    }
+    if (transRate >= 15) {
+      return { cls: 'warn', text: '한국어 번역에 자주 기대고 있어요. 문장 요지를 보기 전에 "쉬운 영어"와 "끊어 읽기"를 먼저 시도해보세요.' };
+    }
+    if (s.trend === 'down' && b.rate <= 15) {
+      return { cls: 'good', text: '도움 없이 잘 읽고 있어요! 다음엔 도움을 조금 줄이고 읽는 분량을 살짝 늘려봐도 좋아요.' };
+    }
+    return null;
   },
 
   /* ===== Backup ===== */

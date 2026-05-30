@@ -148,7 +148,14 @@ let App = {
         this.closeReview();
       }
     });
-    
+
+    window.addEventListener('popstate', () => {
+      const panel = $('study-panel');
+      if (panel && panel.classList.contains('open')) {
+        panel.classList.remove('open');
+      }
+    });
+
     await this.loadSettings();
     
     // Restore last opened book (reading position)
@@ -1127,6 +1134,7 @@ let App = {
   async openStudy() {
     this.closeQuickMenu();
     $('study-panel').classList.add('open');
+    history.pushState({ studyPanel: true }, '');
     this.feedbackAttempts = [];
     
     $('study-sentence').textContent = this.selectedSentence.text;
@@ -1142,6 +1150,10 @@ let App = {
   },
 
   closeStudy() {
+    if (history.state && history.state.studyPanel) {
+      history.back();
+      return;
+    }
     $('study-panel').classList.remove('open');
     TTS.stop();
   },

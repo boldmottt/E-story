@@ -475,6 +475,36 @@ Return JSON: { "correctedEn": "...", "notesKo": ["..."], "usedTargetExpression":
     });
   },
 
+  /** Narrative proficiency diagnosis from the LOCAL scorecard numbers (no raw
+   *  book text → no spoiler risk). Returns level, summary, strengths, weaknesses
+   *  and a concrete study plan, all in Korean. */
+  async assessProficiency(profile) {
+    const payload = JSON.stringify(profile);
+    const key = this._cacheKey('prof', payload);
+    return this._cached(key, async () => {
+      const r = await this._call([
+        { role: 'system', content: 'proficiencyDiagnosis. Return JSON: { "levelKo": "한 줄 종합 수준 평가", "summaryKo": "2~3문장 진단", "strengths": ["..."], "weaknesses": ["..."], "planKo": ["구체적 실천 1", "실천 2", "실천 3"] }' },
+        { role: 'user', content: payload }
+      ], '아래는 한 영어 학습자의 학습 데이터 점수표다(0~100, 표본 수 포함). 어휘·구문 파싱·문법/작문·독해 독립도·읽기 속도 점수와 약점 상세를 근거로 현재 영어 실력 수준을 진단하라. levelKo는 한 줄(예: "중급 초입(B1) 수준"). weaknesses는 가장 약한 2~3개를 짚고, planKo는 약점을 보완할 구체적이고 실천 가능한 학습 행동 3가지를 제시한다. 표본이 적은 항목은 단정하지 말고 신중히 표현한다. 모두 한국어. 점수표에 없는 내용은 지어내지 마라.', true, 900);
+      if (r && !r.error && r.levelKo) return r;
+      return { error: true };
+    });
+  },
+
+  /** Targeted micro-lesson + practice items for the learner's weakest area.
+   *  areaKey is a short label, detailKo a one-line specifics string. */
+  async weaknessDrill(areaKey, detailKo) {
+    const key = this._cacheKey('drill', areaKey, detailKo || '');
+    return this._cached(key, async () => {
+      const r = await this._call([
+        { role: 'system', content: 'weaknessDrill. Return JSON: { "focusKo": "이번에 연습할 약점 한 줄", "tipKo": "핵심 개념 2~3문장 설명", "drills": [ { "en": "연습용 영어 문장 또는 빈칸 문제", "taskKo": "무엇을 하라는 한국어 지시", "answerKo": "정답/모범답안", "explainKo": "한 줄 해설" } ] }' },
+        { role: 'user', content: JSON.stringify({ weakArea: areaKey, detail: detailKo || '' }) }
+      ], '주어진 약점(weakArea/detail)을 집중 보완하는 맞춤 미니 학습을 만들어라. tipKo로 그 약점의 핵심 개념을 짧게 설명하고, drills에는 난이도가 점진적으로 오르는 연습 문제 4개를 만든다. 각 문제는 짧은 영어 문장 기반이어야 하고, taskKo(지시)·answerKo(정답)·explainKo(해설)를 채운다. 실제 책 줄거리나 특정 작품 내용을 쓰지 말고 일반 예문을 사용한다(스포일러 금지). 모두 한국어 설명.', true, 1300);
+      if (r && !r.error && Array.isArray(r.drills) && r.drills.length) return r;
+      return { error: true };
+    });
+  },
+
   /* ── Demo fallback (only when no key) ── */
   _demoResponse(messages) {
     const lastMsg = messages[messages.length - 1]?.content || '';
@@ -495,6 +525,12 @@ Return JSON: { "correctedEn": "...", "notesKo": ["..."], "usedTargetExpression":
     }
     if (lastMsg.includes('"userText"')) {
       return { correctedEn: '', notesKo: ['⚙️ 설정에서 API 키를 등록하면 교정을 받을 수 있어요.'], usedTargetExpression: false, isDemo: true };
+    }
+    if (lastMsg.includes('"weakArea"')) {
+      return { focusKo: '⚙️ AI 보완 학습', tipKo: '설정에서 API 키를 등록하면 약점 맞춤 연습 문제를 생성해 드려요.', drills: [], isDemo: true };
+    }
+    if (lastMsg.includes('"knownRatio"') || lastMsg.includes('"skills"')) {
+      return { levelKo: '⚙️ AI 정밀 진단 미사용', summaryKo: '설정에서 API 키를 등록하면 AI가 점수표를 해석해 맞춤 진단과 학습 계획을 제시합니다. 아래의 영역별 점수는 키 없이도 계산됩니다.', strengths: [], weaknesses: [], planKo: [], isDemo: true };
     }
     if (lastMsg.includes('simpler English')) {
       return { easyEn: '⚙️ Set an API key in Settings to use this.', isDemo: true };

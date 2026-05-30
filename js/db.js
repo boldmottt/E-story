@@ -592,3 +592,73 @@ async function getStructureRoleAccuracy(bookId) {
   }
   return groups;
 }
+
+/* ===== Proficiency diagnosis aggregators ===== */
+
+// Aggregate translation-practice issue types across all attempts. Tells us which
+// kinds of mistakes (grammar/tense/article/preposition/word_choice/...) the
+// learner makes most often when producing translations. 'none' isn't counted.
+async function getTranslationIssueStats() {
+  const attempts = await DB.translationAttempts.toArray();
+  const counts = {};
+  let scored = 0;
+  for (const a of attempts) {
+    const t = a.issueType;
+    if (!t || t === 'none') continue;
+    counts[t] = (counts[t] || 0) + 1;
+    scored++;
+  }
+  return { total: attempts.length, scored, counts };
+}
+
+// Vocabulary status distribution + a rough mastery signal. knownRatio is the
+// share of cards moved to 'known'; learning counts partially toward mastery.
+async function getVocabLevelStats() {
+  const all = await DB.vocabulary.toArray();
+  const dist = { new: 0, learning: 0, known: 0 };
+  for (const v of all) dist[v.status] = (dist[v.status] || 0) + 1;
+  const total = all.length;
+  const knownRatio = total ? +(dist.known / total).toFixed(2) : 0;
+  return { total, ...dist, knownRatio };
+}
+
+// Total count of "learning activities" the learner has accumulated. Used to
+// decide when a cached AI diagnosis is stale enough to be worth re-running.
+// Counts cheap things (sessions, vocab cards, attempts, structure tokens).
+async function getActivityCount() {
+  const [vocab, sessions, attempts, structTokens] = await Promise.all([
+    DB.vocabulary.count(),
+    DB.readingSessions.count(),
+    DB.translationAttempts.count(),
+    DB.structureTokens.count()
+  ]);
+  return vocab + sessions + attempts + structTokens;
+}
+
+// Bundle every learning signal we have into one object for the proficiency
+// diagnosis view. Pure aggregation — scoring/interpretation happens in app.js
+// so it can run offline (demo mode) without an AI call.
+async function getProficiencySignals() {
+  const [vocab, structure, roleAcc, transIssues, dependency, speed, books] = await Promise.all([
+    getVocabLevelStats(),
+    getStructureStats(),
+    getStructureRoleAccuracy(),
+    getTranslationIssueStats(),
+    getDependencyStats(),
+    getReadingSpeed(),
+    getBooks()
+  ]);
+  // CEFR distribution of books. Two buckets: every difficulty-assessed book
+  // (cefrCounts) and books the learner has actually read into meaningfully
+  // (engagedCefr, readingProgress ≥ 0.1). The diagnosis uses engagedCefr to
+  // avoid CEFR inflation from "just added but not read" books.
+  const cefrCounts = {}, engagedCefr = {};
+  for (const b of books) {
+    if (!b.estimatedCefr) continue;
+    cefrCounts[b.estimatedCefr] = (cefrCounts[b.estimatedCefr] || 0) + 1;
+    if ((b.readingProgress || 0) >= 0.1) {
+      engagedCefr[b.estimatedCefr] = (engagedCefr[b.estimatedCefr] || 0) + 1;
+    }
+  }
+  return { vocab, structure, roleAcc, transIssues, dependency, speed, cefrCounts, engagedCefr };
+}

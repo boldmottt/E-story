@@ -131,6 +131,9 @@ let App = {
     // Close study panel
     $('study-close')?.addEventListener('click', () => this.closeStudy());
     
+    // Close review modal
+    $('review-close')?.addEventListener('click', () => this.closeReview());
+    
     // Study submit
     $('study-submit')?.addEventListener('click', () => this.submitTranslation());
     
@@ -142,6 +145,7 @@ let App = {
       if (e.key === 'Escape') {
         this.closeQuickMenu();
         this.closeStudy();
+        this.closeReview();
       }
     });
     
@@ -197,7 +201,19 @@ let App = {
   _saveScrollPosition() {
     if (!this.currentBook) return;
     const offset = window.scrollY || window.pageYOffset;
-    updateBookProgress(this.currentBook.id, this.currentSelectedChunkIndex, offset);
+    updateBookProgress(this.currentBook.id, this.currentSelectedChunkIndex, offset, this._page || 0);
+  },
+
+  // Save page-level progress for the progress bar (page turns within a chunk).
+  _savePageProgress() {
+    if (!this.currentBook) return;
+    const total = this._totalPages();
+    if (total <= 0 || !this.currentChunks.length) return;
+    const pageContrib = (this._page || 0) / total;
+    const overall = Math.min(100, Math.round(
+      ((this.currentSelectedChunkIndex + pageContrib) / this.currentChunks.length) * 100
+    ));
+    updateReadingProgress(this.currentBook.id, overall);
   },
 
   async _patchSettings(patch) {
@@ -251,7 +267,7 @@ let App = {
     html += '<div class="url-import"><input type="text" id="url-input" placeholder="또는 CORS 허용된 URL / 로컬 서버 주소 (맥: python3 serve.py)" class="url-field"><button class="btn-s" id="url-load-btn">📥 불러오기</button></div>';
 
     books.forEach(book => {
-      const pct = book.totalChunks > 0 ? Math.round((book.currentChunk / book.totalChunks) * 100) : 0;
+      const pct = book.readingProgress ?? (book.totalChunks > 0 ? Math.round((book.currentChunk / book.totalChunks) * 100) : 0);
       const bandLabel = { green: '쉬움', yellow: '보통', red: '어려움' };
       const badge = book.difficultyBand
         ? `<span class="diff-badge ${book.difficultyBand}" title="적합도: ${bandLabel[book.difficultyBand] || ''}">${escapeHtml(book.estimatedCefr || '')}</span>`
@@ -372,11 +388,10 @@ let App = {
     $('reader-page').classList.add('active');
     this.switchView('reader');
 
-    this._page = 0;
+    this._page = Math.max(0, Math.min(this.currentBook.currentPage || 0, this._totalPages() - 1));
     this.renderReader();
     this.loadChapterSummary();
     this.loadWarmup();
-    this.loadDailyGoal();
     this.ensureDifficulty();
     this._startReadingSession();
     this._maybeCoachToast();
@@ -475,10 +490,10 @@ let App = {
     const total = this._totalPages();
     const page = this._page || 0;
     if (dir === 'next') {
-      if (page < total - 1) { this._page = page + 1; this._renderPage(); }
+      if (page < total - 1) { this._page = page + 1; this._renderPage(); this._savePageProgress(); }
       else this.goToChunk(this.currentSelectedChunkIndex + 1, 'first');
     } else {
-      if (page > 0) { this._page = page - 1; this._renderPage(); }
+      if (page > 0) { this._page = page - 1; this._renderPage(); this._savePageProgress(); }
       else this.goToChunk(this.currentSelectedChunkIndex - 1, 'last');
     }
   },
@@ -509,7 +524,6 @@ let App = {
         <div class="ch-title">${escapeHtml(this.currentChunk.title)}</div>
         <div class="book-title">${escapeHtml(this.currentBook.title)}</div>
       </div>
-      <div id="daily-goal" class="daily-goal" hidden></div>
       <div id="chapter-warmup" class="chapter-warmup" hidden></div>
       <div id="chapter-summary" class="chapter-summary" hidden></div>
       <div class="expr-reco-bar">
@@ -598,7 +612,7 @@ let App = {
 
     // Save progress before moving
     const scrollOffset = window.scrollY || window.pageYOffset;
-    updateBookProgress(this.currentBook.id, this.currentSelectedChunkIndex, scrollOffset);
+    updateBookProgress(this.currentBook.id, this.currentSelectedChunkIndex, scrollOffset, this._page || 0);
     // End the session for the chunk we're leaving, then start a fresh one.
     this._endReadingSession();
 
@@ -618,12 +632,12 @@ let App = {
       this.renderReader();
       this.loadChapterSummary();
       this.loadWarmup();
-      this.loadDailyGoal();
       window.scrollTo({ top: 0, behavior: 'instant' });
+      this._savePageProgress();
     });
     
     // Save current chunk in DB
-    updateBookProgress(this.currentBook.id, index, 0);
+    updateBookProgress(this.currentBook.id, index, 0, this._page || 0);
   },
 
   setReaderMode(mode) {
@@ -697,10 +711,30 @@ let App = {
     
     menu.classList.add('open');
     if (rect) {
-      const top = rect.bottom + 8;
-      const left = Math.min(rect.left, window.innerWidth - 340);
-      menu.style.top = top + 'px';
-      menu.style.left = Math.max(10, left) + 'px';
+      // Reset previous positioning
+      menu.style.top = '';
+      menu.style.bottom = '';
+
+      // Measure actual menu dimensions after it becomes visible
+      const menuRect = menu.getBoundingClientRect();
+      const menuW = menuRect.width;
+      const menuH = menuRect.height;
+      const BOTTOM_PAD = 80; // page nav (.page-nav) + breathing room
+
+      // Horizontal: keep within viewport, 10px margin on each side
+      const left = Math.min(Math.max(10, rect.left), window.innerWidth - menuW - 10);
+      menu.style.left = left + 'px';
+
+      // Vertical: flip up if it overflows past the bottom safe zone
+      if (rect.bottom + 8 + menuH > window.innerHeight - BOTTOM_PAD) {
+        // Open above the sentence
+        menu.style.bottom = (window.innerHeight - rect.top + 8) + 'px';
+        menu.style.top = '';
+      } else {
+        // Open below the sentence (default)
+        menu.style.top = (rect.bottom + 8) + 'px';
+        menu.style.bottom = '';
+      }
     }
   },
 
@@ -951,6 +985,7 @@ let App = {
           <button class="btn" id="struct-submit">채점</button>
         </div>
       </div>`;
+    document.getElementById('structure-modal')?.remove();
     document.body.appendChild(overlay);
 
     overlay.querySelectorAll('.struct-role').forEach(b => {
@@ -1021,6 +1056,33 @@ let App = {
       });
     });
     const score = labeled ? Math.round((hit / labeled) * 100) : 0;
+
+    // === 학습 데이터 저장 (fire-and-forget) ===
+    const bookId = this.currentBook?.id;
+    const chunkId = this.currentChunk?.id;
+    const sIndex = this.selectedSentence?.index;
+    if (bookId) {
+      (async () => {
+        try {
+          const sessionId = await addStructureSession({
+            bookId, chunkId, sentenceIndex: sIndex,
+            sentenceText: sentence,
+            score, hitCount: hit, labeledCount: labeled,
+            tokenCount: review.length,
+          });
+          const tokensToSave = review.map(r => ({
+            token: r.word,
+            mineRole: r.mine,
+            correctRole: r.correct,
+            isCorrect: r.status === 'ok' ? 1 : 0,
+          }));
+          await addStructureTokens(sessionId, bookId, tokensToSave);
+        } catch (err) {
+          console.warn('[structure] 저장 실패:', err);
+        }
+      })();
+    }
+    // === END ===
 
     // 오답 → 미선택 → 정답 순으로 정렬해 틀린 것부터 한눈에
     const order = { miss: 0, skip: 1, ok: 2 };
@@ -1323,30 +1385,6 @@ let App = {
     }
   },
 
-  // 오늘의 독서 목표: 과거 읽기 속도로 "오늘 N단어(≈M분)"를 추천하고
-  // 오늘 읽은 양 대비 진행바를 보여준다. 속도 데이터가 없으면 기본값 사용.
-  async loadDailyGoal() {
-    const el = $('daily-goal');
-    if (!el) return;
-    const s = await getSettings();
-    const minutes = s.dailyMinutes || 20;
-    const wpm = (await getReadingSpeed()) || 150;
-    const goal = Math.max(100, Math.round((wpm * minutes) / 50) * 50);
-    let readToday = 0;
-    try { readToday = (await getDependencyStats()).today.words || 0; } catch (e) {}
-    const pct = Math.min(100, Math.round((readToday / goal) * 100));
-    const done = readToday >= goal;
-    el.hidden = false;
-    el.innerHTML = `
-      <div class="dg-row">
-        <span class="dg-label">📅 오늘의 독서 목표</span>
-        <span class="dg-val">${readToday.toLocaleString()} / ${goal.toLocaleString()}단어 · 약 ${minutes}분</span>
-      </div>
-      <div class="dg-bar"><div class="dg-fill" style="width:${pct}%"></div></div>
-      ${done ? '<div class="dg-done">🎉 오늘 목표를 달성했어요!</div>' : ''}
-    `;
-  },
-
   // AI가 이 챕터에서 학습 가치 높은 표현 3~5개만 골라 추천한다(PRD 8.8).
   // 각 항목은 단어장 추가 버튼으로 바로 카드화(카드 한도·중복 처리 그대로).
   async loadExprReco() {
@@ -1450,6 +1488,7 @@ let App = {
           <button class="btn-s" id="vocab-select-cancel">취소</button>
         </div>
       </div>`;
+    document.getElementById('vocab-select-modal')?.remove();
     document.body.appendChild(overlay);
     
     overlay.querySelectorAll('.vocab-select-word').forEach(btn => {
@@ -1754,6 +1793,13 @@ let App = {
     delete this._reviewRevealed;
   },
 
+  closeReview() {
+    $('review-modal')?.classList.remove('open');
+    delete this._reviewWords;
+    delete this._reviewIndex;
+    delete this._reviewRevealed;
+  },
+
   /* ===== TTS Controls ===== */
   startTTS() {
     // Read only the sentences on the visible page so highlighting matches.
@@ -1775,13 +1821,11 @@ let App = {
     $('settings-model').value = s.aiModel || 'deepseek-v4-flash';
     $('settings-key').value = '';
     $('settings-key-mode').value = s.apiKeyStorageMode || 'session';
-    $('settings-fast-mode').checked = s.fastMode !== false;
     $('settings-tts-rate').value = s.ttsRate || 0.9;
     $('settings-tts-val').textContent = s.ttsRate + 'x';
     $('settings-fontsize').value = s.fontSize || 16;
     $('settings-fs-val').textContent = s.fontSize + 'px';
     $('settings-card-cap').value = s.dailyCardCap ?? 5;
-    $('settings-daily-min').value = s.dailyMinutes ?? 20;
   },
 
   async saveSettings() {
@@ -1790,18 +1834,15 @@ let App = {
       aiModel: $('settings-model').value.trim(),
       aiKey: $('settings-key').value.trim(),
       apiKeyStorageMode: $('settings-key-mode').value,
-      fastMode: $('settings-fast-mode').checked,
       ttsRate: parseFloat($('settings-tts-rate').value),
       fontSize: parseInt($('settings-fontsize').value),
       dailyCardCap: parseInt($('settings-card-cap').value) || 0,
-      dailyMinutes: parseInt($('settings-daily-min').value) || 20,
       theme: 'dark', lineHeight: 1.9
     };
     
     AI.setKey(s.aiKey, s.apiKeyStorageMode);
     AI.setBaseUrl(s.aiBaseUrl);
     AI.setModel(s.aiModel);
-    AI.setFastMode(s.fastMode);
 
     await saveSettings(s);
     this.showToast('설정이 저장되었습니다!', 'success');

@@ -1749,6 +1749,9 @@ let App = {
       setTimeout(() => {
         $('rc-check')?.addEventListener('click', (e) => { e.stopPropagation(); reveal(); });
         $('rc-input')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); reveal(); } });
+        $('rc-input')?.addEventListener('focus', (e) => {
+          setTimeout(() => e.target.scrollIntoView({ block: 'center', behavior: 'smooth' }), 300);
+        });
         $('rc-input')?.focus();
       }, 0);
     } else {

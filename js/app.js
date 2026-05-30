@@ -710,7 +710,17 @@ let App = {
     `;
     
     menu.classList.add('open');
-    if (rect) {
+
+    // 모바일: 좌표 계산을 건너뛰고 CSS의 하단 고정(바텀시트) 배치를 따른다.
+    if (window.matchMedia('(max-width:768px)').matches) {
+      menu.style.left = '';
+      menu.style.right = '';
+      menu.style.top = '';
+      menu.style.bottom = '';
+      if (activeEl) {
+        setTimeout(() => activeEl.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50);
+      }
+    } else if (rect) {
       // Reset previous positioning
       menu.style.top = '';
       menu.style.bottom = '';

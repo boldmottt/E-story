@@ -130,7 +130,7 @@ const AI = {
   },
 
   /** Core API call with No-spoiler, JSON recovery, error classification */
-  async _call(messages, taskInstructions, jsonMode = true, maxTokens = 4000) {
+  async _call(messages, taskInstructions, jsonMode = true, maxTokens = 8000) {
     // Proxied mode holds the key server-side, so a browser key isn't required.
     if (!this._isProxied() && (this._mode !== 'real' || !this._key)) {
       window.dispatchEvent(new CustomEvent('ai:demo-fallback', { detail: { message: 'API 키가 설정되지 않음', code: 'no_key' } }));
@@ -148,9 +148,11 @@ const AI = {
       const body = {
         // deepseek-v4-flash is a reasoning model: it spends large token budgets
         // on hidden reasoning before emitting content. Too low a cap => empty
-        // content (finish_reason "length"). 4000 leaves room for both.
+        // content (finish_reason "length"). reasoning_effort:'medium' balances
+        // reasoning depth with output availability.
         model: this._model, messages: fullMessages,
-        max_tokens: maxTokens, temperature: 0.3, stream: false
+        max_tokens: maxTokens, temperature: 0.3, stream: false,
+        reasoning_effort: 'medium'
       };
       if (jsonMode) body.response_format = { type: 'json_object' };
 
@@ -172,8 +174,27 @@ const AI = {
       }
 
       const data = await res.json();
-      let content = data.choices?.[0]?.message?.content;
-      if (!content) throw new Error('empty|Empty response from AI');
+      const msg = data.choices?.[0]?.message;
+      const finishReason = data.choices?.[0]?.finish_reason;
+      let content = msg?.content;
+
+      // Reasoning model fallback: content 가 비고 reasoning_content 에 답이 있는 경우
+      if (!content && msg?.reasoning_content) {
+        const reasoning = msg.reasoning_content;
+        const jsonMatch = reasoning.match(/```json\s*([\s\S]+?)\s*```/) ||
+                          reasoning.match(/(\{[\s\S]+\})/);
+        if (jsonMatch) {
+          content = jsonMatch[1] || jsonMatch[0];
+          console.warn('[ai] content empty, extracted from reasoning_content');
+        }
+      }
+
+      if (!content) {
+        const reason = finishReason === 'length'
+          ? 'finish_reason=length (max_tokens 부족 또는 reasoning 과다)'
+          : 'content 비어있음 (finish_reason=' + finishReason + ')';
+        throw new Error('empty|Empty response from AI: ' + reason);
+      }
 
       if (jsonMode) {
         // Robust JSON extraction
@@ -225,7 +246,7 @@ const AI = {
       const r = await this._call([
         { role: 'system', content: 'Return JSON: { "word": "...", "meaningKo": "...", "partOfSpeech": "..." } — Translate the given word in context of the sentence.' },
         { role: 'user', content: `Korean meaning of "${word}" in: "${sentence}"` }
-      ], 'You are a concise English-Korean dictionary. Give the meaning of the specific word the user asks about, in the context of this sentence.');
+      ], 'You are a concise English-Korean dictionary. Give the meaning of the specific word the user asks about, in the context of this sentence.', true, 800);
       if (r && !r.error) return r;
       return { word, meaningKo: '(API 오류)', partOfSpeech: '' };
     });
@@ -237,9 +258,28 @@ const AI = {
       const r = await this._call([
         { role: 'system', content: 'Return JSON: { "structure": "...", "keyPoints": [], "tense": "...", "clauseType": "..." } — Explain grammar in Korean.' },
         { role: 'user', content: `Explain grammar of: "${sentence}"` }
-      ], 'Explain the grammar structure of this sentence in Korean. Focus on one key point. Do NOT translate the sentence.');
+      ], 'Explain the grammar structure of this sentence in Korean. Focus on one key point. Do NOT translate the sentence.', true, 800);
       if (r && !r.error) return r;
       return { structure: '(API 오류)', keyPoints: [], tense: '', clauseType: '' };
+    });
+  },
+
+  /** Explain the points Korean learners specifically struggle with in this
+   *  sentence (pronoun reference, perfect-tense timeline, post-modifiers/
+   *  relative clauses, inanimate subject, articles/prepositions). AI picks the
+   *  1-2 most relevant and explains in Korean. */
+  async koreanGrammar(sentence) {
+    const key = this._cacheKey('kg', sentence);
+    return this._cached(key, async () => {
+      const r = await this._call([
+        { role: 'system', content: 'Return JSON: { "points": [ { "type": "...", "ko": "..." } ] }' },
+        { role: 'user', content: `Korean-learner points for: "${sentence}"` }
+      ], `이 문장에서 한국어 모어 학습자가 특히 어려워하는 포인트를 1~2개만 골라 한국어로 설명하라.
+후보 유형(type): 대명사 지시, 완료시제, 후치수식, 관계절, 무생물 주어, 관사, 전치사.
+- 해당되는 게 있을 때만 포함. 예: 대명사 지시면 그 대명사가 가리키는 대상을 짚어라. 완료시제면 시점 관계를 짧게 설명.
+- ko는 초보자도 이해할 친절한 한국어 1~2문장. 문장을 통째로 번역하지 마라. NO spoilers.`, true, 800);
+      if (r && !r.error && Array.isArray(r.points) && r.points.length) return r;
+      return { error: true, message: '(API 연결을 확인해주세요)' };
     });
   },
 
@@ -248,8 +288,37 @@ const AI = {
     return this._cached(key, async () => {
       const r = await this._call([
         { role: 'user', content: `Short Korean gist (2-3 words) of: "${sentence}"` }
-      ], 'Return JSON: { "gistKo": "..." } — A VERY short Korean gist (2-3 words) of this single sentence. NO spoilers, NO future context. Use present tense only.');
+      ], 'Return JSON: { "gistKo": "..." } — A VERY short Korean gist (2-3 words) of this single sentence. NO spoilers, NO future context. Use present tense only.', true, 600);
       if (r && !r.error) return r;
+      return { error: true, code: 'unknown', message: '(API 연결을 확인해주세요)' };
+    });
+  },
+
+  /** Paraphrase the sentence into SIMPLER English (not Korean). Helps the
+   *  reader understand without leaning on translation — reduces dependency. */
+  async easyEnglish(sentence) {
+    const key = this._cacheKey('ee', sentence);
+    return this._cached(key, async () => {
+      const r = await this._call([
+        { role: 'system', content: 'Return JSON: { "easyEn": "..." }' },
+        { role: 'user', content: `Rewrite in simpler English: "${sentence}"` }
+      ], 'Rewrite this single sentence in SIMPLER English (around CEFR A2-B1): common words, shorter clauses, same meaning. Output English only — do NOT translate to Korean. One sentence. NO spoilers, no outside context.', true, 700);
+      if (r && !r.error && r.easyEn) return r;
+      return { error: true, code: 'unknown', message: '(API 연결을 확인해주세요)' };
+    });
+  },
+
+  /** Break the sentence into sense groups in ENGLISH order, each with a tiny
+   *  Korean gloss. Trains Korean readers to parse English left-to-right
+   *  (후치수식·관계절) instead of reordering into Korean. */
+  async chunkReading(sentence) {
+    const key = this._cacheKey('cr', sentence);
+    return this._cached(key, async () => {
+      const r = await this._call([
+        { role: 'system', content: 'Return JSON: { "groups": [ { "en": "...", "ko": "..." } ] }' },
+        { role: 'user', content: `Sentence: "${sentence}"` }
+      ], '이 영어 문장을 의미 단위(sense group)로 끊어라. groups 배열에 원문 어순 그대로 각 덩어리를 넣는다. en = 그 영어 덩어리(원문 단어 그대로), ko = 그 덩어리의 아주 짧은 한국어 뜻. 한국어 어순으로 재배열하지 말고 영어 순서를 유지한다. 보통 3~7개 덩어리. NO spoilers, 문장 밖 맥락 금지.', true, 700);
+      if (r && !r.error && Array.isArray(r.groups) && r.groups.length) return r;
       return { error: true, code: 'unknown', message: '(API 연결을 확인해주세요)' };
     });
   },
@@ -263,7 +332,7 @@ const AI = {
       const r = await this._call([
         { role: 'system', content: 'Return JSON: { "literalTranslationKo": "...", "naturalTranslationKo": "...", "storyNoteKo": "..." }' },
         { role: 'user', content: `English sentence: "${sentence}"` }
-      ], '이 영어 문장을 한국어로 두 가지로 번역하라. 사용자의 번역과 무관하게 원문만 보고 새로 작성한다. literalTranslationKo = 어순·구문을 살린 직역. naturalTranslationKo = 한국어답게 매끄러운 의역. 두 번역은 반드시 서로 달라야 한다(같은 문장 반복 금지). storyNoteKo = 이 문장의 뉘앙스·장면 의미 한 줄. NO spoilers.');
+      ], '이 영어 문장을 한국어로 두 가지로 번역하라. 사용자의 번역과 무관하게 원문만 보고 새로 작성한다. literalTranslationKo = 어순·구문을 살린 직역. naturalTranslationKo = 한국어답게 매끄러운 의역. 두 번역은 반드시 서로 달라야 한다(같은 문장 반복 금지). storyNoteKo = 이 문장의 뉘앙스·장면 의미 한 줄. NO spoilers.', true, 1200);
       if (r && !r.error) return r;
       return { error: true };
     });
@@ -318,7 +387,7 @@ Return JSON: { "status": "needs_revision"|"good_enough"|"finished", "issueType":
 CRITICAL: shouldShowModelTranslation is ALWAYS false for 'good_enough' status. Only set true when status is 'finished'.
 When finished, include literalTranslationKo, naturalTranslationKo, storyNoteKo.` },
       { role: 'user', content: JSON.stringify({ sentence, userTranslation, previousIssues }) }
-    ], 'You are a Korean-speaking English tutor. One feedback point at a time. NEVER show model translations until the user has finished (status="finished").');
+    ], 'You are a Korean-speaking English tutor. One feedback point at a time. NEVER show model translations until the user has finished (status="finished").', true, 1500);
   },
 
   async storyBuddy(sentence, question, context) {
@@ -326,10 +395,25 @@ When finished, include literalTranslationKo, naturalTranslationKo, storyNoteKo.`
     return this._cached(key, async () => {
       const r = await this._call([
         { role: 'user', content: JSON.stringify({ sentence, question, context }) }
-      ], 'Return JSON: { "answerKo": "..." } — Korean answer about the story. NO spoilers. Only talk about what has happened up to this sentence. If asked about future, say "아직 읽지 않은 부분이에요."');
+      ], 'Return JSON: { "answerKo": "..." } — Korean answer about the story. NO spoilers. Only talk about what has happened up to this sentence. If asked about future, say "아직 읽지 않은 부분이에요."', true, 600);
       if (r && !r.error) return r;
       return { answerKo: '(API 연결 오류)' };
     });
+  },
+
+  /** Gently correct the user's short English output (output practice).
+   *  Meaning-first, at most a few fixes — don't nitpick style. */
+  async correctOutput(userText, contextSentence) {
+    return await this._call([
+      { role: 'system', content: `You are a kind English tutor for a Korean learner who just read a sentence and wrote a short English response (a summary or a sentence using a new expression).
+Rules:
+1. Be encouraging. Do NOT nitpick — fix at most 5 things, meaning-first.
+2. correctedEn = a natural rewrite of their text (keep their intent/voice).
+3. notesKo = up to 3 short Korean notes on the most important fixes only. If it's already good, return [] or one praise note.
+4. usedTargetExpression = true if they reused vocabulary/phrasing from the context sentence.
+Return JSON: { "correctedEn": "...", "notesKo": ["..."], "usedTargetExpression": false }` },
+      { role: 'user', content: JSON.stringify({ userText, contextSentence }) }
+    ], 'Gently correct the learner\'s short English. Meaning-first, max 5 fixes, encouraging tone. NO spoilers.', true, 1000);
   },
 
   async chapterSummary(text) {
@@ -337,9 +421,57 @@ When finished, include literalTranslationKo, naturalTranslationKo, storyNoteKo.`
     return this._cached(key, async () => {
       const r = await this._call([
         { role: 'user', content: text.slice(0, 4000) }
-      ], 'Return JSON: { "summary3lines": "", "characters": [], "keyScenes": [], "expressions": [], "studySentence": "" } — Korean chapter summary. Only summarize the text provided. Do NOT add information from outside this text.');
+      ], 'Return JSON: { "summary3lines": "", "characters": [], "keyScenes": [], "expressions": [], "studySentence": "" } — Korean chapter summary. Only summarize the text provided. Do NOT add information from outside this text.', true, 2000);
       if (r && !r.error) return r;
       return { summary3lines: '(API 오류)', characters: [], keyScenes: [], expressions: [] };
+    });
+  },
+
+  /** Pick the few highest learning-value expressions from a chunk: common,
+   *  reusable phrasing — NOT proper nouns or rare literary words. Used to keep
+   *  the user from trying to memorise everything (PRD 8.8). */
+  async selectExpressions(text) {
+    const sample = (text || '').slice(0, 4000);
+    const key = this._cacheKey('se', sample.slice(0, 300));
+    return this._cached(key, async () => {
+      const r = await this._call([
+        { role: 'system', content: 'Return JSON: { "items": [ { "en": "...", "ko": "...", "why": "..." } ] }' },
+        { role: 'user', content: sample }
+      ], '이 텍스트에서 학습 가치가 높은 영어 표현을 3~5개만 골라라. 기준: 실제로 자주 쓰여 재사용 가능한 표현(연어·구동사·관용구) 우선. 제외: 고유명사, 세계관 전용어, 너무 희귀한 문학어. en=표현, ko=짧은 한국어 뜻, why=왜 배울 가치가 있는지 한국어 한 줄. NO spoilers about plot.', true, 800);
+      if (r && !r.error && Array.isArray(r.items) && r.items.length) return r;
+      return { error: true };
+    });
+  },
+
+  /** Pre-reading warm-up. "Previously" = Korean recap of the PREVIOUS chunk
+   *  (already read, so no spoiler). "expressions" = key phrases to watch for
+   *  in the upcoming chunk (surface phrases only, no plot reveal). */
+  async warmup(prevText, currentText) {
+    const prev = (prevText || '').slice(0, 3000);
+    const cur = (currentText || '').slice(0, 3000);
+    const key = this._cacheKey('wu', prev.slice(0, 200), cur.slice(0, 200));
+    return this._cached(key, async () => {
+      const r = await this._call([
+        { role: 'system', content: 'Return JSON: { "previouslyKo": "...", "expressions": [ { "en": "...", "ko": "..." } ] }' },
+        { role: 'user', content: JSON.stringify({ previousChapter: prev, upcomingChapter: cur }) }
+      ], 'previouslyKo = 이전 챕터(previousChapter)에서 무슨 일이 있었는지 한국어 2~3문장 요약("지난 이야기"). 이전 챕터가 비어 있으면 빈 문자열. expressions = 다가올 챕터(upcomingChapter)에서 눈여겨볼 핵심 영어 표현 3~5개(en=표현, ko=짧은 뜻). 표현은 표면적 어구만 뽑고 줄거리 전개·결말을 누설하지 마라. NO spoilers about upcoming events.', true, 1200);
+      if (r && !r.error) return r;
+      return { error: true };
+    });
+  },
+
+  /** Estimate reading difficulty from a SAMPLE of the book (not the whole text).
+   *  Returns CEFR level + a green/yellow/red suitability band. */
+  async analyzeDifficulty(sampleText) {
+    const sample = (sampleText || '').slice(0, 1500);
+    const key = this._cacheKey('ad', sample);
+    return this._cached(key, async () => {
+      const r = await this._call([
+        { role: 'system', content: 'Return JSON: { "estimatedCefr": "A2"|"B1"|"B2"|"C1", "difficultyBand": "green"|"yellow"|"red", "rationaleKo": "..." }' },
+        { role: 'user', content: sample }
+      ], '이 영어 텍스트 샘플의 독해 난이도만 판정하라. 어휘 수준·문장 구조·문체를 근거로 CEFR(A2~C1)을 추정한다. difficultyBand: green=독립 독서 가능, yellow=보조 독서 권장, red=상당히 어려움. rationaleKo는 한국어 한 줄. 줄거리를 요약하거나 누설하지 마라(스포일러 금지). 샘플 밖 지식을 쓰지 마라.', true, 600);
+      if (r && !r.error && r.estimatedCefr) return r;
+      return { error: true };
     });
   },
 
@@ -354,12 +486,25 @@ When finished, include literalTranslationKo, naturalTranslationKo, storyNoteKo.`
         shouldShowModelTranslation: false,
         literalTranslationKo: null,
         naturalTranslationKo: null,
-        storyNoteKo: null
+        storyNoteKo: null,
+        isDemo: true,
       };
     }
     if (lastMsg.includes('"sentence"') && lastMsg.includes('"question"')) {
-      return { answerKo: '⚙️ 설정에서 API 키를 등록해주세요.' };
+      return { answerKo: '⚙️ 설정에서 API 키를 등록해주세요.', isDemo: true };
     }
-    return { gistKo: '⚙️ 설정에서 API 키를 등록해주세요.' };
+    if (lastMsg.includes('"userText"')) {
+      return { correctedEn: '', notesKo: ['⚙️ 설정에서 API 키를 등록하면 교정을 받을 수 있어요.'], usedTargetExpression: false, isDemo: true };
+    }
+    if (lastMsg.includes('simpler English')) {
+      return { easyEn: '⚙️ Set an API key in Settings to use this.', isDemo: true };
+    }
+    if (lastMsg.includes('upcomingChapter')) {
+      return { error: true, isDemo: true };
+    }
+    if (lastMsg.startsWith('Sentence:')) {
+      return { groups: [{ en: '⚙️', ko: '설정에서 API 키를 등록해주세요.' }], isDemo: true };
+    }
+    return { gistKo: '⚙️ 설정에서 API 키를 등록해주세요.', isDemo: true };
   }
 };

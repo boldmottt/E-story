@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,500;0,7..72,600;1,7..72,400;1,7..72,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=1.13">
+<link rel="stylesheet" href="css/style.css?v=1.26">
 </head>
 <body>
 
@@ -22,13 +22,20 @@
     </div>
     <div class="nav-item" data-view="vocabulary">
       <span class="ico">📖</span><span>단어장</span>
+      <span id="review-badge" class="queue-badge review-badge"></span>
     </div>
     <div class="nav-item" data-view="queue">
       <span class="ico">⏰</span><span>나중에 공부</span>
       <span id="queue-badge" class="queue-badge"></span>
     </div>
+    <div class="nav-item" data-view="highlights">
+      <span class="ico">⭐</span><span>하이라이트</span>
+    </div>
     <div class="nav-item" data-view="history">
       <span class="ico">📝</span><span>피드백 이력</span>
+    </div>
+    <div class="nav-item" data-view="report">
+      <span class="ico">📊</span><span>리포트</span>
     </div>
     <div class="nav-item" data-view="settings">
       <span class="ico">⚙️</span><span>설정</span>
@@ -89,10 +96,22 @@
     <div class="queue-list" id="queue-list"></div>
   </div>
 
+  <!-- ===== Highlights Page ===== -->
+  <div class="content" id="highlights-page">
+    <h2 class="page-heading">⭐ 하이라이트</h2>
+    <div class="highlight-list" id="highlight-list"></div>
+  </div>
+
   <!-- ===== History Page ===== -->
   <div class="content" id="history-page">
     <h2 class="page-heading">📝 피드백 이력</h2>
     <div class="history-list" id="history-list"></div>
+  </div>
+
+  <!-- ===== Report Page ===== -->
+  <div class="content" id="report-page">
+    <h2 class="page-heading">📊 리포트</h2>
+    <div class="report-body" id="report-body"></div>
   </div>
 
   <!-- ===== Settings Page ===== -->
@@ -142,6 +161,15 @@
     </div>
 
     <div class="settings-group">
+      <h3>📇 학습</h3>
+      <div class="settings-row">
+        <label>하루 새 카드 한도</label>
+        <input type="number" id="settings-card-cap" min="0" max="100" step="1" class="w-240">
+      </div>
+      <div class="settings-note">하루에 새로 만들 단어 카드 수를 제한합니다. 한도에 도달하면 추가가 막힙니다(0 = 무제한). 복습 부채가 쌓이는 것을 막아줍니다.</div>
+    </div>
+
+    <div class="settings-group">
       <h3>💾 백업</h3>
       <div class="flex-row">
         <button class="btn" id="export-btn">📤 내보내기</button>
@@ -183,6 +211,7 @@
 <!-- ===== Review Modal ===== -->
 <div class="modal-overlay" id="review-modal">
   <div class="modal review-modal-box">
+    <button class="review-close" id="review-close" title="닫기" aria-label="복습 닫기">✕</button>
     <div class="review-progress" id="review-progress"></div>
     <div class="review-card" id="review-card">
       <div class="rc-front" id="review-front"></div>
@@ -202,12 +231,12 @@
 </div>
 
 <!-- ===== Scripts (cache-busting: bump v=1.1 on deploy to force fresh files) ===== -->
-<script src="vendor/dexie.js?v=1.13"></script>
-<script src="js/db.js?v=1.13"></script>
-<script src="js/ai.js?v=1.13"></script>
-<script src="js/tts.js?v=1.13"></script>
-<script src="js/sync.js?v=1.13"></script>
-<script src="js/app.js?v=1.13"></script>
+<script src="vendor/dexie.js?v=1.26"></script>
+<script src="js/db.js?v=1.26"></script>
+<script src="js/ai.js?v=1.26"></script>
+<script src="js/tts.js?v=1.26"></script>
+<script src="js/sync.js?v=1.26"></script>
+<script src="js/app.js?v=1.26"></script>
 
 </body>
 </html>

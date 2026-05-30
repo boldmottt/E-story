@@ -15,6 +15,7 @@ let App = {
   feedbackAttempts: [],
   queueCount: 0,
   _scrollThrottleTimer: null,
+  currentSessionId: null,
 
   async init() {
     await AI.init();
@@ -93,9 +94,16 @@ let App = {
         this.submitFreeQuestion();
         return;
       }
+      const phraseSave = e.target.closest('.qm-phrase-save');
+      if (phraseSave) {
+        e.stopPropagation();
+        this.savePhrase();
+        return;
+      }
       const wordEl = e.target.closest('.qm-word');
       if (wordEl) {
         e.stopPropagation();
+        if (this._phraseMode) { this.togglePhraseWord(wordEl); return; }
         document.querySelectorAll('.qm-word').forEach(w => w.classList.remove('selected'));
         wordEl.classList.add('selected');
         this.selectedWord = wordEl.dataset.word;
@@ -105,11 +113,16 @@ let App = {
       const action = e.target.closest('.qm-btn')?.dataset.action;
       const handlers = {
         word: () => this.wordHint(),
+        phraseMode: () => this.togglePhraseMode(),
         grammar: () => this.grammarHint(),
         gist: () => this.sentenceGist(),
         structure: () => this.openStructure(),
+        koreanGrammar: () => this.koreanGrammar(),
+        chunkReading: () => this.chunkReading(),
+        easyEnglish: () => this.easyEnglish(),
         ask: () => this.askFreeQuestion(),
         study: () => this.openStudy(),
+        highlight: () => this.saveHighlight(),
         queue: () => this.queueLater()
       };
       handlers[action]?.();
@@ -117,6 +130,9 @@ let App = {
 
     // Close study panel
     $('study-close')?.addEventListener('click', () => this.closeStudy());
+    
+    // Close review modal
+    $('review-close')?.addEventListener('click', () => this.closeReview());
     
     // Study submit
     $('study-submit')?.addEventListener('click', () => this.submitTranslation());
@@ -129,6 +145,7 @@ let App = {
       if (e.key === 'Escape') {
         this.closeQuickMenu();
         this.closeStudy();
+        this.closeReview();
       }
     });
     
@@ -167,6 +184,9 @@ let App = {
         this.closeQuickMenu();
       }
     });
+
+    // Flush any open reading session when the tab closes (dependency logging).
+    window.addEventListener('beforeunload', () => this._endReadingSession());
     
     // Throttled scroll position save
     document.addEventListener('scroll', () => {
@@ -181,7 +201,19 @@ let App = {
   _saveScrollPosition() {
     if (!this.currentBook) return;
     const offset = window.scrollY || window.pageYOffset;
-    updateBookProgress(this.currentBook.id, this.currentSelectedChunkIndex, offset);
+    updateBookProgress(this.currentBook.id, this.currentSelectedChunkIndex, offset, this._page || 0);
+  },
+
+  // Save page-level progress for the progress bar (page turns within a chunk).
+  _savePageProgress() {
+    if (!this.currentBook) return;
+    const total = this._totalPages();
+    if (total <= 0 || !this.currentChunks.length) return;
+    const pageContrib = (this._page || 0) / total;
+    const overall = Math.min(100, Math.round(
+      ((this.currentSelectedChunkIndex + pageContrib) / this.currentChunks.length) * 100
+    ));
+    updateReadingProgress(this.currentBook.id, overall);
   },
 
   async _patchSettings(patch) {
@@ -190,6 +222,8 @@ let App = {
   },
 
   switchView(view) {
+    // Leaving the reader ends the active reading session (dependency logging).
+    if (this.currentView === 'reader' && view !== 'reader') this._endReadingSession();
     this.currentView = view;
     document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.view === view));
     document.querySelectorAll('.content').forEach(c => c.classList.toggle('active', c.id === view + '-page'));
@@ -197,7 +231,9 @@ let App = {
     const renderers = {
       vocabulary: () => this.renderVocabulary(),
       queue: () => this.renderQueue(),
+      highlights: () => this.renderHighlights(),
       history: () => this.renderHistory(),
+      report: () => this.renderReport(),
       settings: () => this.loadSettings()
     };
     renderers[view]?.();
@@ -214,7 +250,9 @@ let App = {
       reader: this.currentBook?.title || '읽기',
       vocabulary: '📖 단어장',
       queue: '⏰ 나중에 공부',
+      highlights: '⭐ 하이라이트',
       history: '📝 피드백 이력',
+      report: '📊 리포트',
       settings: '⚙️ 설정'
     };
     $('topbar-title').textContent = titles[view] || 'E-Story';
@@ -229,9 +267,14 @@ let App = {
     html += '<div class="url-import"><input type="text" id="url-input" placeholder="또는 CORS 허용된 URL / 로컬 서버 주소 (맥: python3 serve.py)" class="url-field"><button class="btn-s" id="url-load-btn">📥 불러오기</button></div>';
 
     books.forEach(book => {
-      const pct = book.totalChunks > 0 ? Math.round((book.currentChunk / book.totalChunks) * 100) : 0;
+      const pct = book.readingProgress ?? (book.totalChunks > 0 ? Math.round((book.currentChunk / book.totalChunks) * 100) : 0);
+      const bandLabel = { green: '쉬움', yellow: '보통', red: '어려움' };
+      const badge = book.difficultyBand
+        ? `<span class="diff-badge ${book.difficultyBand}" title="적합도: ${bandLabel[book.difficultyBand] || ''}">${escapeHtml(book.estimatedCefr || '')}</span>`
+        : '';
       html += `<div class="book-card" data-id="${book.id}">
         <button class="book-del" data-action="delete" data-id="${book.id}" title="책 삭제" aria-label="책 삭제">✕</button>
+        ${badge}
         <div class="title">${escapeHtml(book.title)}</div>
         <div class="author">${escapeHtml(book.fileName)}</div>
         <div class="progress"><div class="progress-fill" style="width:${pct}%"></div></div>
@@ -345,8 +388,14 @@ let App = {
     $('reader-page').classList.add('active');
     this.switchView('reader');
 
+    this._page = Math.max(0, Math.min(this.currentBook.currentPage || 0, this._totalPages() - 1));
     this.renderReader();
     this.loadChapterSummary();
+    this.loadWarmup();
+    this.ensureDifficulty();
+    this._startReadingSession();
+    this._maybeCoachToast();
+    this._maybeReviewNudge();
 
     // Restore scroll position
     if (this.currentBook.currentOffset) {
@@ -356,14 +405,63 @@ let App = {
     }
   },
 
-  // Group sentences into real <p> blocks by paragraph index.
-  // Legacy books (no `para` field) fall back to a single paragraph.
+  // Lazily estimate book difficulty (CEFR + green/yellow/red) on first open,
+  // using only the first chunk as a sample. Cached on the book record so it
+  // runs once. Silent in demo mode (no key) — no badge appears.
+  async ensureDifficulty() {
+    const book = this.currentBook;
+    if (!book || book.difficultyBand) return;
+    const sample = this.currentChunks?.[0]?.content;
+    if (!sample) return;
+    const r = await AI.analyzeDifficulty(sample);
+    if (!r || r.error || !r.estimatedCefr) return;
+    const fields = {
+      estimatedCefr: r.estimatedCefr,
+      difficultyBand: r.difficultyBand || 'yellow',
+      difficultyNote: r.rationaleKo || ''
+    };
+    await updateBook(book.id, fields);
+    Object.assign(this.currentBook, fields);
+  },
+
+  // Paragraphs shown per page within a chunk (keeps each screen short).
+  PARAS_PER_PAGE: 2,
+
+  // Ordered list of unique paragraph keys in the current chunk.
+  _paraKeys() {
+    return [...new Set((this.currentSentences || []).map(s => s.para ?? 0))];
+  },
+
+  _totalPages() {
+    return Math.max(1, Math.ceil(this._paraKeys().length / this.PARAS_PER_PAGE));
+  },
+
+  // The paragraph keys visible on the current page.
+  _currentPageParas() {
+    const keys = this._paraKeys();
+    const start = (this._page || 0) * this.PARAS_PER_PAGE;
+    return new Set(keys.slice(start, start + this.PARAS_PER_PAGE));
+  },
+
+  // Sentences (with their global index) visible on the current page — used by TTS.
+  _visibleSentences() {
+    const pageParas = this._currentPageParas();
+    const out = [];
+    (this.currentSentences || []).forEach((s, i) => {
+      if (pageParas.has(s.para ?? 0)) out.push({ s, i });
+    });
+    return out;
+  },
+
+  // Group the CURRENT PAGE's sentences into <p> blocks. data-index stays the
+  // global index into currentSentences so click/TTS stay correct across pages.
   renderParagraphs() {
-    const sents = this.currentSentences;
+    const pageParas = this._currentPageParas();
     let html = '';
     let curPara = null;
-    sents.forEach((sent, i) => {
+    (this.currentSentences || []).forEach((sent, i) => {
       const p = sent.para ?? 0;
+      if (!pageParas.has(p)) return;
       if (p !== curPara) {
         if (curPara !== null) html += '</p>';
         html += '<p>';
@@ -373,6 +471,40 @@ let App = {
     });
     if (curPara !== null) html += '</p>';
     return html || '<p></p>';
+  },
+
+  // Page nav markup (within-chunk). Crosses chunk boundaries at the ends.
+  _renderPageNav() {
+    const total = this._totalPages();
+    const page = this._page || 0;
+    const atFirst = page <= 0 && this.currentSelectedChunkIndex <= 0;
+    const atLast = page >= total - 1 && this.currentSelectedChunkIndex >= this.currentChunks.length - 1;
+    return `
+      <button class="topbar-btn page-btn" data-page="prev"${atFirst ? ' disabled' : ''}>◀ 이전</button>
+      <span class="ch-label">${page + 1} / ${total} 쪽</span>
+      <button class="topbar-btn page-btn" data-page="next"${atLast ? ' disabled' : ''}>다음 ▶</button>`;
+  },
+
+  // Move within the chunk by page; at the edges, move to the adjacent chunk.
+  turnPage(dir) {
+    const total = this._totalPages();
+    const page = this._page || 0;
+    if (dir === 'next') {
+      if (page < total - 1) { this._page = page + 1; this._renderPage(); this._savePageProgress(); }
+      else this.goToChunk(this.currentSelectedChunkIndex + 1, 'first');
+    } else {
+      if (page > 0) { this._page = page - 1; this._renderPage(); this._savePageProgress(); }
+      else this.goToChunk(this.currentSelectedChunkIndex - 1, 'last');
+    }
+  },
+
+  // Re-render only the text + page nav (keeps warmup/summary/goal intact).
+  _renderPage() {
+    const rt = $('reader-text');
+    if (rt) rt.innerHTML = this.renderParagraphs();
+    const nav = $('page-nav');
+    if (nav) nav.innerHTML = this._renderPageNav();
+    window.scrollTo({ top: 0, behavior: 'instant' });
   },
 
   renderReader() {
@@ -392,7 +524,12 @@ let App = {
         <div class="ch-title">${escapeHtml(this.currentChunk.title)}</div>
         <div class="book-title">${escapeHtml(this.currentBook.title)}</div>
       </div>
+      <div id="chapter-warmup" class="chapter-warmup" hidden></div>
       <div id="chapter-summary" class="chapter-summary" hidden></div>
+      <div class="expr-reco-bar">
+        <button class="topbar-btn" id="expr-reco-btn">💡 이 챕터에서 학습할 표현 추천</button>
+      </div>
+      <div id="expr-reco" class="expr-reco" hidden></div>
       <div class="ch-nav">
         <button class="topbar-btn ch-nav-btn" data-dir="prev"${prevDisabled ? ' disabled' : ''}>◀ 이전</button>
         <span class="ch-label">${this.currentSelectedChunkIndex + 1} / ${this.currentChunks.length}</span>
@@ -413,6 +550,7 @@ let App = {
       <div class="reader-text" id="reader-text">
         ${this.renderParagraphs()}
       </div>
+      <div class="page-nav" id="page-nav">${this._renderPageNav()}</div>
     `;
     
     // Single event delegation for wrap
@@ -425,6 +563,12 @@ let App = {
           return;
         }
         
+        const pageBtn = e.target.closest('.page-btn');
+        if (pageBtn) {
+          this.turnPage(pageBtn.dataset.page);
+          return;
+        }
+
         const modeBtn = e.target.closest('.mode-btn');
         if (modeBtn) {
           this.setReaderMode(modeBtn.dataset.mode);
@@ -434,7 +578,11 @@ let App = {
         if (e.target.closest('#tts-play')) { this.startTTS(); return; }
         if (e.target.closest('#tts-pause')) { TTS.isSpeaking() ? TTS.pause() : TTS.resume(); return; }
         if (e.target.closest('#tts-stop')) { TTS.stop(); return; }
-        
+
+        if (e.target.closest('#expr-reco-btn')) { this.loadExprReco(); return; }
+        const addBtn = e.target.closest('.er-add');
+        if (addBtn) { this.saveExprFromReco(addBtn); return; }
+
         const sentEl = e.target.closest('.sent');
         if (sentEl) {
           const index = parseInt(sentEl.dataset.index);
@@ -458,31 +606,38 @@ let App = {
     }
   },
 
-  goToChunk(index) {
+  goToChunk(index, pagePos = 'first') {
     if (index < 0 || index >= this.currentChunks.length) return;
     if (index === this.currentSelectedChunkIndex) return;
-    
+
     // Save progress before moving
     const scrollOffset = window.scrollY || window.pageYOffset;
-    updateBookProgress(this.currentBook.id, this.currentSelectedChunkIndex, scrollOffset);
-    
+    updateBookProgress(this.currentBook.id, this.currentSelectedChunkIndex, scrollOffset, this._page || 0);
+    // End the session for the chunk we're leaving, then start a fresh one.
+    this._endReadingSession();
+
     // Switch chunk
     this.currentSelectedChunkIndex = index;
     this.currentChunk = this.currentChunks[index];
-    
+    this._startReadingSession();
+
     // Update AI reading context
     AI.setReadingContext(this.currentBook.title, index, this.currentChunks.length);
-    
+
     // Load sentences for new chunk
     getSentences(this.currentChunk.id).then(sents => {
       this.currentSentences = sents;
+      // Land on the first or last page depending on nav direction.
+      this._page = pagePos === 'last' ? this._totalPages() - 1 : 0;
       this.renderReader();
       this.loadChapterSummary();
+      this.loadWarmup();
       window.scrollTo({ top: 0, behavior: 'instant' });
+      this._savePageProgress();
     });
     
     // Save current chunk in DB
-    updateBookProgress(this.currentBook.id, index, 0);
+    updateBookProgress(this.currentBook.id, index, 0, this._page || 0);
   },
 
   setReaderMode(mode) {
@@ -490,36 +645,65 @@ let App = {
     $('tts-bar').classList.toggle('open', mode === 'tts');
   },
 
+  /* ===== Reading session (help-dependency logging) ===== */
+  _startReadingSession() {
+    this._endReadingSession();
+    if (!this.currentBook) return;
+    startReadingSession(this.currentBook.id, this.currentSelectedChunkIndex)
+      .then(id => { this.currentSessionId = id; });
+  },
+
+  _endReadingSession() {
+    const id = this.currentSessionId;
+    if (!id) return;
+    this.currentSessionId = null;
+    const wordsRead = (this.currentSentences || [])
+      .reduce((n, s) => n + (s.text ? s.text.split(/\s+/).filter(Boolean).length : 0), 0);
+    endReadingSession(id, this.currentSelectedChunkIndex, wordsRead);
+  },
+
+  // Fire-and-forget counter bump; safe when no session is active.
+  _logHelp(type) {
+    if (this.currentSessionId) bumpSessionCounter(this.currentSessionId, type);
+  },
+
   /* ===== Sentence Click → Quick Menu ===== */
   async onSentenceClick(index, text) {
     this.selectedSentence = { index, text };
     this.selectedWord = null;
-    
-    // Highlight the sentence
+    this._phraseMode = false;
+    this._phraseSel = [];
+
+    // Highlight the sentence (locate by data-index — paging renders a subset)
     document.querySelectorAll('.sent').forEach(s => s.classList.remove('active'));
-    const sentEls = document.querySelectorAll('.sent');
-    if (sentEls[index]) sentEls[index].classList.add('active');
-    
-    const rect = sentEls[index]?.getBoundingClientRect();
+    const activeEl = document.querySelector(`.sent[data-index="${index}"]`);
+    if (activeEl) activeEl.classList.add('active');
+
+    const rect = activeEl?.getBoundingClientRect();
     const menu = $('quick-menu');
-    
+
     // Generate word tokens for each word in the sentence
     const words = text.split(' ').filter(w => w.length > 0);
-    const wordHtml = words.map(w => {
+    const wordHtml = words.map((w, wi) => {
       const clean = escapeHtml(w);
-      return `<span class="qm-word word-chip" data-word="${clean}">${clean}</span>`;
+      return `<span class="qm-word word-chip" data-word="${clean}" data-i="${wi}">${clean}</span>`;
     }).join('');
-    
+
     menu.innerHTML = `
       <div class="qm-sentence">${escapeHtml(text)}</div>
       <div class="qm-words-wrap">${wordHtml}</div>
       <div class="qm-actions">
         <button class="qm-btn word" data-action="word">📖 단어 힌트</button>
+        <button class="qm-btn phrase" data-action="phraseMode">🔗 구 저장</button>
         <button class="qm-btn grammar" data-action="grammar">🔍 구문 힌트</button>
         <button class="qm-btn structure" data-action="structure">🏷️ 구조 분석</button>
+        <button class="qm-btn kgram" data-action="koreanGrammar">🇰🇷 한국인 포인트</button>
+        <button class="qm-btn chunk" data-action="chunkReading">✂️ 끊어 읽기</button>
+        <button class="qm-btn easy" data-action="easyEnglish">🟢 쉬운 영어</button>
         <button class="qm-btn gist" data-action="gist">📋 문장 요지</button>
         <button class="qm-btn ask" data-action="ask">💬 자유 질문</button>
         <button class="qm-btn study" data-action="study">✍️ 해석해보기</button>
+        <button class="qm-btn highlight" data-action="highlight">⭐ 하이라이트</button>
         <button class="qm-btn queue" data-action="queue">⏰ 나중에</button>
       </div>
       <div id="hint-result" class="qm-hint-result"></div>
@@ -527,11 +711,84 @@ let App = {
     
     menu.classList.add('open');
     if (rect) {
-      const top = rect.bottom + 8;
-      const left = Math.min(rect.left, window.innerWidth - 340);
-      menu.style.top = top + 'px';
-      menu.style.left = Math.max(10, left) + 'px';
+      // Reset previous positioning
+      menu.style.top = '';
+      menu.style.bottom = '';
+
+      // Measure actual menu dimensions after it becomes visible
+      const menuRect = menu.getBoundingClientRect();
+      const menuW = menuRect.width;
+      const menuH = menuRect.height;
+      const BOTTOM_PAD = 80; // page nav (.page-nav) + breathing room
+
+      // Horizontal: keep within viewport, 10px margin on each side
+      const left = Math.min(Math.max(10, rect.left), window.innerWidth - menuW - 10);
+      menu.style.left = left + 'px';
+
+      // Vertical: flip up if it overflows past the bottom safe zone
+      if (rect.bottom + 8 + menuH > window.innerHeight - BOTTOM_PAD) {
+        // Open above the sentence
+        menu.style.bottom = (window.innerHeight - rect.top + 8) + 'px';
+        menu.style.top = '';
+      } else {
+        // Open below the sentence (default)
+        menu.style.top = (rect.bottom + 8) + 'px';
+        menu.style.bottom = '';
+      }
     }
+  },
+
+  // 구(句) 저장 모드: 단어 칩을 여러 개 골라 "be reluctant to" 같은 표현을 저장.
+  togglePhraseMode() {
+    this._phraseMode = !this._phraseMode;
+    this._phraseSel = [];
+    document.querySelectorAll('.qm-word').forEach(w => w.classList.remove('selected'));
+    const result = $('hint-result');
+    if (!result) return;
+    if (!this._phraseMode) { result.style.display = 'none'; result.innerHTML = ''; return; }
+    result.style.display = 'block';
+    result.innerHTML = `
+      <div class="qm-phrase-hint">단어를 순서대로 눌러 표현을 만드세요.</div>
+      <div class="qm-phrase-preview" id="qm-phrase-preview">—</div>
+      <button class="qm-phrase-save" disabled>🔗 이 표현 저장</button>
+    `;
+  },
+
+  togglePhraseWord(el) {
+    el.classList.toggle('selected');
+    this._refreshPhrasePreview();
+  },
+
+  _refreshPhrasePreview() {
+    const sel = [...document.querySelectorAll('.qm-word.selected')]
+      .map(w => ({ i: parseInt(w.dataset.i), word: w.dataset.word }))
+      .sort((a, b) => a.i - b.i);
+    this._phraseSel = sel;
+    const phrase = sel.map(s => s.word).join(' ').replace(/[",.;:!?]+$/g, '').trim();
+    const prev = $('qm-phrase-preview');
+    const btn = document.querySelector('.qm-phrase-save');
+    if (prev) prev.textContent = phrase || '—';
+    if (btn) btn.disabled = sel.length < 2;
+  },
+
+  async savePhrase() {
+    const phrase = this._phraseSel.map(s => s.word).join(' ').replace(/[",.;:!?]+$/g, '').trim();
+    if (!phrase || this._phraseSel.length < 2) return;
+    const btn = document.querySelector('.qm-phrase-save');
+    if (btn) { btn.disabled = true; btn.textContent = '뜻 불러오는 중...'; }
+    const hint = await AI.wordHint(phrase, this.selectedSentence.text);
+    const meaning = (hint && hint.meaningKo) || '';
+    // contextSentence = the full sentence → 생산형 복습에서 빈칸 cloze가 동작.
+    const r = await addWord(phrase, meaning, this.selectedSentence.text, this.currentBook?.id, this.selectedSentence?.index, '');
+    if (r && r.blocked) {
+      this.showToast(`오늘 새 카드 한도(${r.cap}개)에 도달했어요. 내일 다시 추가할 수 있어요.`, 'info');
+      if (btn) { btn.textContent = '🔗 이 표현 저장'; btn.disabled = false; }
+      return;
+    }
+    this.showToast(`"${phrase}" 표현 저장됨!`, 'success');
+    this.updateQueueBadge();
+    Sync.scheduleSync();
+    if (btn) btn.textContent = '✅ 저장됨';
   },
 
   closeQuickMenu() {
@@ -548,6 +805,7 @@ let App = {
     const result = $('hint-result');
     result.style.display = 'block';
     result.textContent = '단어 뜻 불러오는 중...';
+    this._logHelp('dictionaryClicks');
     const hint = await AI.wordHint(word, this.selectedSentence.text);
     const meaning = hint.meaningKo || '';
     result.innerHTML = `<b>${escapeHtml(word)}</b>: ${escapeHtml(meaning || '데이터를 불러오는 중입니다')} <span style="color:var(--tx3)">(${escapeHtml(hint.partOfSpeech || '')})</span>`
@@ -556,7 +814,11 @@ let App = {
 
   async saveWordDirect(word, meaning) {
     if (!word) return;
-    await addWord(word, meaning || '', this.selectedSentence?.text || '', this.currentBook?.id, this.selectedSentence?.index, '');
+    const r = await addWord(word, meaning || '', this.selectedSentence?.text || '', this.currentBook?.id, this.selectedSentence?.index, '');
+    if (r && r.blocked) {
+      this.showToast(`오늘 새 카드 한도(${r.cap}개)에 도달했어요. 내일 다시 추가할 수 있어요.`, 'info');
+      return;
+    }
     this.showToast(`"${word}" 단어장에 추가됨!`, 'success');
   },
 
@@ -564,6 +826,7 @@ let App = {
     const result = $('hint-result');
     result.style.display = 'block';
     result.textContent = '분석 중...';
+    this._logHelp('helpStepsUsed');
     const data = await AI.grammarHint(this.selectedSentence.text);
     if (data.error) {
       result.textContent = '⚠️ ' + (data.message || '분석 실패');
@@ -576,6 +839,7 @@ let App = {
     const result = $('hint-result');
     result.style.display = 'block';
     result.textContent = '요약 중...';
+    this._logHelp('translationClicks');
     const data = await AI.sentenceGist(this.selectedSentence.text);
     if (data.error) {
       result.textContent = '⚠️ ' + (data.message || '요약 실패');
@@ -583,6 +847,55 @@ let App = {
     }
     result.textContent = `📋 ${data.gistKo}`;
   },
+
+  // 한국어로 바로 번역하지 않고, 더 쉬운 영어로 같은 뜻을 보여준다.
+  async easyEnglish() {
+    const result = $('hint-result');
+    result.style.display = 'block';
+    result.textContent = '쉬운 영어로 바꾸는 중...';
+    if (this.currentSessionId && typeof bumpSessionCounter === 'function') {
+      bumpSessionCounter(this.currentSessionId, 'helpStepsUsed');
+    }
+    const data = await AI.easyEnglish(this.selectedSentence.text);
+    if (data.error) {
+      result.textContent = '⚠️ ' + (data.message || '실패');
+      return;
+    }
+    result.textContent = `🟢 ${data.easyEn}`;
+  },
+
+  // 영어 어순 그대로 의미 단위로 끊어 보여준다(후치수식·관계절 훈련).
+  async chunkReading() {
+    const result = $('hint-result');
+    result.style.display = 'block';
+    result.textContent = '끊어 읽는 중...';
+    this._logHelp('helpStepsUsed');
+    const data = await AI.chunkReading(this.selectedSentence.text);
+    if (data.error) {
+      result.textContent = '⚠️ ' + (data.message || '실패');
+      return;
+    }
+    result.innerHTML = `<div class="chunk-list">` + data.groups.map(g =>
+      `<div class="chunk-row"><span class="chunk-en">${escapeHtml(g.en || '')}</span><span class="chunk-ko">${escapeHtml(g.ko || '')}</span></div>`
+    ).join('') + `</div>`;
+  },
+
+  // 한국인이 약한 포인트(대명사 지시·완료시제·후치수식·무생물 주어 등)를 짚어준다.
+  async koreanGrammar() {
+    const result = $('hint-result');
+    result.style.display = 'block';
+    result.textContent = '한국인 포인트 분석 중...';
+    this._logHelp('helpStepsUsed');
+    const data = await AI.koreanGrammar(this.selectedSentence.text);
+    if (data.error) {
+      result.textContent = '⚠️ ' + (data.message || '실패');
+      return;
+    }
+    result.innerHTML = data.points.map(p =>
+      `<div class="kg-row"><span class="kg-type">${escapeHtml(p.type || '')}</span><div class="kg-ko">${escapeHtml(p.ko || '')}</div></div>`
+    ).join('');
+  },
+
 
   // 문장에 대해 AI에게 자유롭게 질문하는 입력칸을 연다.
   askFreeQuestion() {
@@ -647,6 +960,7 @@ let App = {
     this.closeQuickMenu();
     const sentence = this.selectedSentence?.text;
     if (!sentence) return;
+    this._logHelp('helpStepsUsed');
     const tokens = sentence.split(/\s+/).filter(Boolean);
     this._structUser = {};   // tokenIndex -> roleIndex
     this._structActive = 0;  // active role index
@@ -672,6 +986,7 @@ let App = {
           <button class="btn" id="struct-submit">채점</button>
         </div>
       </div>`;
+    document.getElementById('structure-modal')?.remove();
     document.body.appendChild(overlay);
 
     overlay.querySelectorAll('.struct-role').forEach(b => {
@@ -742,6 +1057,33 @@ let App = {
       });
     });
     const score = labeled ? Math.round((hit / labeled) * 100) : 0;
+
+    // === 학습 데이터 저장 (fire-and-forget) ===
+    const bookId = this.currentBook?.id;
+    const chunkId = this.currentChunk?.id;
+    const sIndex = this.selectedSentence?.index;
+    if (bookId) {
+      (async () => {
+        try {
+          const sessionId = await addStructureSession({
+            bookId, chunkId, sentenceIndex: sIndex,
+            sentenceText: sentence,
+            score, hitCount: hit, labeledCount: labeled,
+            tokenCount: review.length,
+          });
+          const tokensToSave = review.map(r => ({
+            token: r.word,
+            mineRole: r.mine,
+            correctRole: r.correct,
+            isCorrect: r.status === 'ok' ? 1 : 0,
+          }));
+          await addStructureTokens(sessionId, bookId, tokensToSave);
+        } catch (err) {
+          console.warn('[structure] 저장 실패:', err);
+        }
+      })();
+    }
+    // === END ===
 
     // 오답 → 미선택 → 정답 순으로 정렬해 틀린 것부터 한눈에
     const order = { miss: 0, skip: 1, ok: 2 };
@@ -950,7 +1292,49 @@ let App = {
       </div>
       <div id="buddy-response" class="buddy-response"></div>
     `;
+    this._renderOutputPractice();
     this._offerVocabSave();
+  },
+
+  // 읽은 문장을 바탕으로 짧게 영어로 써보고(요약·표현 활용) AI에게 부드러운
+  // 교정을 받는 출력 연습. 인풋(해석) 다음의 아웃풋 훈련 단계.
+  _renderOutputPractice() {
+    const buddy = $('study-buddy');
+    if (!buddy) return;
+    const block = document.createElement('div');
+    block.className = 'output-practice';
+    block.innerHTML = `
+      <div class="op-label">✏️ 오늘의 영작 — 방금 읽은 내용을 영어 1~2문장으로</div>
+      <textarea id="op-input" class="op-input" rows="3" placeholder="배운 표현을 써서 영어로 짧게 써보세요. 완벽하지 않아도 돼요."></textarea>
+      <button class="op-submit" id="op-submit">교정 받기</button>
+      <div id="op-result" class="op-result"></div>
+    `;
+    buddy.appendChild(block);
+    block.querySelector('#op-submit').addEventListener('click', () => this.submitOutput());
+  },
+
+  async submitOutput() {
+    const ta = $('op-input');
+    const out = $('op-result');
+    if (!ta || !out) return;
+    const text = ta.value.trim();
+    if (!text) { ta.focus(); return; }
+    const btn = $('op-submit');
+    if (btn) btn.disabled = true;
+    out.style.display = 'block';
+    out.textContent = '교정 중...';
+    const data = await AI.correctOutput(text, this.selectedSentence?.text || '');
+    if (btn) btn.disabled = false;
+    if (!data || data.error) {
+      out.textContent = '⚠️ 교정을 불러올 수 없습니다.';
+      return;
+    }
+    const notes = Array.isArray(data.notesKo) ? data.notesKo : [];
+    out.innerHTML = `
+      ${data.correctedEn ? `<div class="op-corrected"><span class="op-tag">교정</span> ${escapeHtml(data.correctedEn)}</div>` : ''}
+      ${notes.length ? `<ul class="op-notes">${notes.map(n => `<li>${escapeHtml(n)}</li>`).join('')}</ul>` : ''}
+      ${data.usedTargetExpression ? `<div class="op-bonus">🎯 배운 표현을 활용했어요!</div>` : ''}
+    `;
   },
 
   // H3: User chooses to continue
@@ -1002,6 +1386,71 @@ let App = {
     }
   },
 
+  // AI가 이 챕터에서 학습 가치 높은 표현 3~5개만 골라 추천한다(PRD 8.8).
+  // 각 항목은 단어장 추가 버튼으로 바로 카드화(카드 한도·중복 처리 그대로).
+  async loadExprReco() {
+    const box = $('expr-reco');
+    if (!box) return;
+    box.hidden = false;
+    box.innerHTML = '🔄 학습할 표현 고르는 중...';
+    const r = await AI.selectExpressions(this.currentChunk?.content || '');
+    if (!r || r.error || !(r.items?.length)) {
+      box.innerHTML = '<div class="er-empty">추천을 불러올 수 없어요. (설정에서 AI 키를 확인하세요)</div>';
+      return;
+    }
+    box.innerHTML = `<div class="er-title">💡 학습할 표현 추천</div>` + r.items.map(it => `
+      <div class="er-item">
+        <div class="er-main"><span class="er-en">${escapeHtml(it.en || '')}</span> <span class="er-ko">${escapeHtml(it.ko || '')}</span></div>
+        ${it.why ? `<div class="er-why">${escapeHtml(it.why)}</div>` : ''}
+        <button class="er-add" data-en="${escapeHtml(it.en || '')}" data-ko="${escapeHtml(it.ko || '')}">➕ 단어장</button>
+      </div>`).join('');
+  },
+
+  async saveExprFromReco(btn) {
+    const en = btn.dataset.en, ko = btn.dataset.ko;
+    if (!en) return;
+    const r = await addWord(en, ko || '', '', this.currentBook?.id, 0, '');
+    if (r && r.blocked) {
+      this.showToast(`오늘 새 카드 한도(${r.cap}개)에 도달했어요. 내일 다시 추가할 수 있어요.`, 'info');
+      return;
+    }
+    btn.textContent = '✅ 추가됨';
+    btn.disabled = true;
+    this.updateQueueBadge();
+    Sync.scheduleSync();
+  },
+
+  // 읽기 전 예열: "지난 이야기"(이전 챕터 요약) + 다가올 챕터의 핵심 표현.
+  // 데모/오류 시 조용히 숨긴다. 사용자가 접으면 그 챕터에서는 다시 안 뜬다.
+  async loadWarmup() {
+    const el = $('chapter-warmup');
+    if (!el) return;
+    el.hidden = true;
+    const idx = this.currentSelectedChunkIndex;
+    const cur = this.currentChunk?.content || '';
+    if (!cur || cur.length < 50) return;
+    if (this._warmupDismissed === `${this.currentBook?.id}:${idx}`) return;
+    const prev = idx > 0 ? (this.currentChunks[idx - 1]?.content || '') : '';
+    el.hidden = false;
+    el.innerHTML = '🔄 예열 불러오는 중...';
+    const r = await AI.warmup(prev, cur);
+    if (!r || r.error || (!r.previouslyKo && !(r.expressions?.length))) {
+      el.hidden = true;
+      return;
+    }
+    const exprs = Array.isArray(r.expressions) ? r.expressions : [];
+    el.innerHTML = `
+      <button class="warmup-close" title="접기" aria-label="접기">✕</button>
+      <div class="warmup-title">🔥 읽기 전 예열</div>
+      ${r.previouslyKo ? `<div class="warmup-prev"><b>지난 이야기</b> · ${escapeHtml(r.previouslyKo)}</div>` : ''}
+      ${exprs.length ? `<div class="warmup-expr"><b>오늘의 표현</b><ul>${exprs.map(e => `<li><span class="we-en">${escapeHtml(e.en || '')}</span> <span class="we-ko">${escapeHtml(e.ko || '')}</span></li>`).join('')}</ul></div>` : ''}
+    `;
+    el.querySelector('.warmup-close')?.addEventListener('click', () => {
+      el.hidden = true;
+      this._warmupDismissed = `${this.currentBook?.id}:${idx}`;
+    });
+  },
+
   _offerVocabSave() {
     const words = this.selectedSentence.text.split(' ').filter(w => w.length > 3);
     if (!words.length) return;
@@ -1040,6 +1489,7 @@ let App = {
           <button class="btn-s" id="vocab-select-cancel">취소</button>
         </div>
       </div>`;
+    document.getElementById('vocab-select-modal')?.remove();
     document.body.appendChild(overlay);
     
     overlay.querySelectorAll('.vocab-select-word').forEach(btn => {
@@ -1047,7 +1497,12 @@ let App = {
         const word = btn.dataset.word;
         // M6: Fetch actual meaning from AI
         const meaning = await fetchWordMeaning(word, this.selectedSentence.text);
-        await addWord(word, meaning, this.selectedSentence.text, this.currentBook?.id, this.selectedSentence?.index, '');
+        const r = await addWord(word, meaning, this.selectedSentence.text, this.currentBook?.id, this.selectedSentence?.index, '');
+        if (r && r.blocked) {
+          this.showToast(`오늘 새 카드 한도(${r.cap}개)에 도달했어요. 내일 다시 추가할 수 있어요.`, 'info');
+          overlay.remove();
+          return;
+        }
         this.showToast(`"${word}" 단어장에 추가됨!`, 'success');
         this.updateQueueBadge();
         Sync.scheduleSync();
@@ -1067,6 +1522,36 @@ let App = {
     this.showToast('📌 나중에 공부할 문장으로 저장됨!', 'info');
     await this.updateQueueBadge();
     Sync.scheduleSync();
+  },
+
+  async saveHighlight() {
+    this.closeQuickMenu();
+    if (!this.selectedSentence?.text) return;
+    await addHighlight(this.currentBook?.id, this.selectedSentence.index, this.selectedSentence.text, this.currentBook?.title);
+    this.showToast('⭐ 하이라이트에 저장됨!', 'success');
+    Sync.scheduleSync();
+  },
+
+  async renderHighlights() {
+    const list = $('highlight-list');
+    if (!list) return;
+    const items = await getHighlights();
+    if (!items.length) {
+      list.innerHTML = '<div class="review-empty"><div class="icon">⭐</div>아직 하이라이트가 없습니다.<br>문장을 누르고 ⭐ 하이라이트로 마음에 드는 문장을 저장하세요.</div>';
+      return;
+    }
+    list.innerHTML = items.map(h => `
+      <div class="highlight-item">
+        <button class="hl-del" data-id="${h.id}" title="삭제" aria-label="삭제">✕</button>
+        <div class="hl-text">${escapeHtml(h.text || '')}</div>
+        <div class="hl-meta"><span>${escapeHtml(h.bookTitle || '')}</span><span>${new Date(h.createdAt).toLocaleDateString()}</span></div>
+      </div>`).join('');
+    list.querySelectorAll('.hl-del').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        await deleteHighlight(parseInt(btn.dataset.id));
+        this.renderHighlights();
+      });
+    });
   },
 
   async renderQueue() {
@@ -1134,6 +1619,27 @@ let App = {
       badge.textContent = count > 0 ? count : '';
       badge.style.display = count > 0 ? 'inline' : 'none';
     }
+    this.updateReviewBadge();
+  },
+
+  // 복습 부채: 복습 예정(마감) 카드 수를 단어장 탭 배지로 보여준다.
+  async updateReviewBadge() {
+    const due = await countDueReviews();
+    const badge = $('review-badge');
+    if (badge) {
+      badge.textContent = due > 0 ? due : '';
+      badge.style.display = due > 0 ? 'inline' : 'none';
+    }
+  },
+
+  // 복습이 많이 밀렸으면 책을 열 때 한 번만 "복습 먼저" 넛지를 띄운다.
+  async _maybeReviewNudge() {
+    if (this._reviewNudgeShown) return;
+    this._reviewNudgeShown = true;
+    const due = await countDueReviews();
+    if (due >= 30) {
+      this.showToast(`📖 복습이 ${due}개 밀렸어요. 오늘은 새 카드보다 복습부터 해볼까요? (단어장 → 복습 시작)`, 'info');
+    }
   },
 
   /* ===== Vocabulary ===== */
@@ -1195,33 +1701,71 @@ let App = {
     
     const idx = this._reviewIndex;
     const word = this._reviewWords[idx];
-    
+
     if (!word) {
       this._finishReview();
       return;
     }
-    
+
     progress.textContent = `${idx + 1} / ${this._reviewWords.length}`;
-    front.textContent = word.word;
-    meaning.textContent = word.meaningKo || '(뜻 정보 없음)';
-    context.textContent = word.contextSentence ? `"${word.contextSentence}"` : '';
-    scene.textContent = word.sceneNote || '';
-    
     back.classList.remove('show');
     this._reviewRevealed = false;
     card.style.cursor = 'pointer';
-    
     footer.textContent = `현재 상태: ${statusLabel(word.status)}`;
-    
-    // Click card to flip (reveal meaning)
-    card.onclick = () => {
-      if (!this._reviewRevealed) {
+
+    // Production card when the saved context contains the word/expression:
+    // show Korean meaning + a cloze blank and ask the learner to recall the
+    // English. Otherwise fall back to a recognition card (word → meaning).
+    const reExpr = new RegExp(word.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    const isProduction = !!(word.meaningKo && word.contextSentence && reExpr.test(word.contextSentence));
+
+    if (isProduction) {
+      const cloze = word.contextSentence.replace(reExpr, '_____');
+      front.innerHTML = `
+        <div class="rc-mode">✍️ 영어로 떠올리기</div>
+        <div class="rc-prompt">${escapeHtml(word.meaningKo)}</div>
+        <div class="rc-cloze">"${escapeHtml(cloze)}"</div>
+        <input id="rc-input" class="rc-input" placeholder="영어로 입력" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <button id="rc-check" class="rc-check">확인</button>
+        <div id="rc-judge" class="rc-judge"></div>`;
+      meaning.textContent = word.word;
+      context.textContent = word.contextSentence ? `"${word.contextSentence}"` : '';
+      scene.textContent = word.sceneNote || '';
+
+      const reveal = () => {
+        if (this._reviewRevealed) return;
+        const input = $('rc-input');
+        const judge = $('rc-judge');
+        if (input && judge) {
+          const ok = input.value.trim().toLowerCase() === word.word.toLowerCase();
+          judge.textContent = ok ? '✅ 정답!' : (input.value.trim() ? '↩︎ 정답을 확인하세요' : '정답을 확인하세요');
+          judge.className = 'rc-judge ' + (ok ? 'ok' : 'no');
+        }
         back.classList.add('show');
         this._reviewRevealed = true;
         card.style.cursor = 'default';
-      }
-    };
-    
+      };
+      card.onclick = (e) => { if (!e.target.closest('#rc-input')) reveal(); };
+      setTimeout(() => {
+        $('rc-check')?.addEventListener('click', (e) => { e.stopPropagation(); reveal(); });
+        $('rc-input')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); reveal(); } });
+        $('rc-input')?.focus();
+      }, 0);
+    } else {
+      front.textContent = word.word;
+      meaning.textContent = word.meaningKo || '(뜻 정보 없음)';
+      context.textContent = word.contextSentence ? `"${word.contextSentence}"` : '';
+      scene.textContent = word.sceneNote || '';
+      // Click card to flip (reveal meaning)
+      card.onclick = () => {
+        if (!this._reviewRevealed) {
+          back.classList.add('show');
+          this._reviewRevealed = true;
+          card.style.cursor = 'default';
+        }
+      };
+    }
+
     // Rating buttons
     actions.querySelectorAll('.review-btn').forEach(btn => {
       btn.onclick = async () => {
@@ -1250,9 +1794,17 @@ let App = {
     delete this._reviewRevealed;
   },
 
+  closeReview() {
+    $('review-modal')?.classList.remove('open');
+    delete this._reviewWords;
+    delete this._reviewIndex;
+    delete this._reviewRevealed;
+  },
+
   /* ===== TTS Controls ===== */
   startTTS() {
-    const texts = this.currentSentences.map(s => s.text);
+    // Read only the sentences on the visible page so highlighting matches.
+    const texts = this._visibleSentences().map(v => v.s.text);
     TTS.startReading(texts, 0, (idx) => {
       document.querySelectorAll('.sent').forEach((s, i) => {
         s.classList.toggle('highlighted', i === idx);
@@ -1274,6 +1826,7 @@ let App = {
     $('settings-tts-val').textContent = s.ttsRate + 'x';
     $('settings-fontsize').value = s.fontSize || 16;
     $('settings-fs-val').textContent = s.fontSize + 'px';
+    $('settings-card-cap').value = s.dailyCardCap ?? 5;
   },
 
   async saveSettings() {
@@ -1284,13 +1837,14 @@ let App = {
       apiKeyStorageMode: $('settings-key-mode').value,
       ttsRate: parseFloat($('settings-tts-rate').value),
       fontSize: parseInt($('settings-fontsize').value),
+      dailyCardCap: parseInt($('settings-card-cap').value) || 0,
       theme: 'dark', lineHeight: 1.9
     };
     
     AI.setKey(s.aiKey, s.apiKeyStorageMode);
     AI.setBaseUrl(s.aiBaseUrl);
     AI.setModel(s.aiModel);
-    
+
     await saveSettings(s);
     this.showToast('설정이 저장되었습니다!', 'success');
   },
@@ -1341,6 +1895,82 @@ let App = {
           <div class="hi-meta"><span>${new Date(s.createdAt).toLocaleString()}</span></div>
         </div>`;
     });
+  },
+
+  // 도움 의존도 리포트: "도움 없이 읽은 양"이 늘고 있는지를 보여준다(North Star).
+  async renderReport() {
+    const body = $('report-body');
+    if (!body) return;
+    body.innerHTML = '🔄 집계 중...';
+    const s = await getDependencyStats();
+
+    if (s.all.sessions === 0) {
+      body.innerHTML = '<div class="review-empty"><div class="icon">📊</div>아직 읽기 기록이 없습니다.<br>책을 읽으면 도움 의존도가 여기에 쌓입니다.</div>';
+      return;
+    }
+
+    const fmt = n => (n || 0).toLocaleString();
+    const trendInfo = {
+      down: { cls: 'good', txt: '↓ 도움 의존도가 줄고 있어요. 잘하고 있어요!' },
+      up:   { cls: 'warn', txt: '↑ 지난주보다 도움을 더 썼어요. 천천히 줄여봐요.' },
+      flat: { cls: '',     txt: '→ 지난주와 비슷한 수준이에요.' },
+      new:  { cls: '',     txt: '아직 비교할 지난주 데이터가 부족해요. 계속 읽어보세요!' }
+    }[s.trend] || { cls: '', txt: '' };
+
+    const card = (title, b) => `
+      <div class="report-card">
+        <div class="rc-title">${title}</div>
+        <div class="rc-big">${b.rate}<span class="rc-unit">회 / 1000단어</span></div>
+        <div class="rc-sub">읽은 단어 ${fmt(b.words)} · 세션 ${fmt(b.sessions)}</div>
+        <div class="rc-break">📖 사전 ${fmt(b.dict)} · 🌐 번역 ${fmt(b.trans)} · 🔍 힌트 ${fmt(b.help)}</div>
+      </div>`;
+
+    const tip = this._coachTip(s);
+
+    body.innerHTML = `
+      <div class="report-note">핵심 지표는 <b>1000단어당 도움 사용 횟수</b>입니다. 낮을수록 더 독립적으로 읽고 있다는 뜻이에요.</div>
+      ${tip ? `<div class="coach-tip ${tip.cls}"><span class="coach-ico">🧭</span><span>${escapeHtml(tip.text)}</span></div>` : ''}
+      <div class="report-trend ${trendInfo.cls}">${trendInfo.txt}</div>
+      <div class="report-grid">
+        ${card('오늘', s.today)}
+        ${card('최근 7일', s.week)}
+        ${card('지난 주', s.prevWeek)}
+        ${card('전체', s.all)}
+      </div>
+    `;
+  },
+
+  // 책을 열 때 코치 제안을 토스트로 한 번만 살짝 띄운다(앱 세션당 1회).
+  async _maybeCoachToast() {
+    if (this._coachShown) return;
+    this._coachShown = true;
+    try {
+      const s = await getDependencyStats();
+      const tip = this._coachTip(s);
+      if (tip) this.showToast('🧭 ' + tip.text, tip.cls === 'good' ? 'success' : 'info');
+    } catch (e) { /* non-blocking */ }
+  },
+
+  // 적응형 코칭: 최근 읽기 패턴에서 가장 도움이 될 한 가지 제안을 고른다.
+  // 의미 있는 표본(주간 200단어 이상)이 없으면 null. 우선순위: 어휘 부담 →
+  // 번역 의존 → 잘하고 있을 때 분량 늘리기.
+  _coachTip(s) {
+    const b = (s.week && s.week.words >= 200) ? s.week : null;
+    if (!b) return null;
+    const per1k = n => (n / b.words) * 1000;
+    const dictRate = per1k(b.dict);
+    const transRate = per1k(b.trans);
+
+    if (dictRate >= 30) {
+      return { cls: 'warn', text: '어휘 부담이 큰 편이에요. 다음 챕터는 "읽기 전 예열"에서 핵심 표현을 먼저 훑고 시작해보세요.' };
+    }
+    if (transRate >= 15) {
+      return { cls: 'warn', text: '한국어 번역에 자주 기대고 있어요. 문장 요지를 보기 전에 "쉬운 영어"와 "끊어 읽기"를 먼저 시도해보세요.' };
+    }
+    if (s.trend === 'down' && b.rate <= 15) {
+      return { cls: 'good', text: '도움 없이 잘 읽고 있어요! 다음엔 도움을 조금 줄이고 읽는 분량을 살짝 늘려봐도 좋아요.' };
+    }
+    return null;
   },
 
   /* ===== Backup ===== */

@@ -910,6 +910,9 @@ let App = {
     `;
     const ta = $('qm-ask-input');
     ta?.focus();
+    if (ta && window.matchMedia('(max-width:768px)').matches) {
+      setTimeout(() => ta.scrollIntoView({ block: 'center', behavior: 'smooth' }), 300);
+    }
     ta?.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();

@@ -592,3 +592,53 @@ async function getStructureRoleAccuracy(bookId) {
   }
   return groups;
 }
+
+/* ===== Proficiency diagnosis aggregators ===== */
+
+// Aggregate translation-practice issue types across all attempts. Tells us which
+// kinds of mistakes (grammar/tense/article/preposition/word_choice/...) the
+// learner makes most often when producing translations. 'none' isn't counted.
+async function getTranslationIssueStats() {
+  const attempts = await DB.translationAttempts.toArray();
+  const counts = {};
+  let scored = 0;
+  for (const a of attempts) {
+    const t = a.issueType;
+    if (!t || t === 'none') continue;
+    counts[t] = (counts[t] || 0) + 1;
+    scored++;
+  }
+  return { total: attempts.length, scored, counts };
+}
+
+// Vocabulary status distribution + a rough mastery signal. knownRatio is the
+// share of cards moved to 'known'; learning counts partially toward mastery.
+async function getVocabLevelStats() {
+  const all = await DB.vocabulary.toArray();
+  const dist = { new: 0, learning: 0, known: 0 };
+  for (const v of all) dist[v.status] = (dist[v.status] || 0) + 1;
+  const total = all.length;
+  const knownRatio = total ? +(dist.known / total).toFixed(2) : 0;
+  return { total, ...dist, knownRatio };
+}
+
+// Bundle every learning signal we have into one object for the proficiency
+// diagnosis view. Pure aggregation — scoring/interpretation happens in app.js
+// so it can run offline (demo mode) without an AI call.
+async function getProficiencySignals() {
+  const [vocab, structure, roleAcc, transIssues, dependency, speed, books] = await Promise.all([
+    getVocabLevelStats(),
+    getStructureStats(),
+    getStructureRoleAccuracy(),
+    getTranslationIssueStats(),
+    getDependencyStats(),
+    getReadingSpeed(),
+    getBooks()
+  ]);
+  // CEFR distribution of books that have been difficulty-assessed.
+  const cefrCounts = {};
+  for (const b of books) {
+    if (b.estimatedCefr) cefrCounts[b.estimatedCefr] = (cefrCounts[b.estimatedCefr] || 0) + 1;
+  }
+  return { vocab, structure, roleAcc, transIssues, dependency, speed, cefrCounts };
+}

@@ -397,8 +397,14 @@ code{font-family:var(--font-mono);font-size:.85em;background:var(--bg4);padding:
 .skill-list{display:flex;flex-direction:column;gap:14px;margin-bottom:18px}
 .skill-row{background:var(--bg3);border:1px solid var(--bd);border-radius:var(--r-md);padding:14px 16px;box-shadow:var(--shadow-sm)}
 .skill-row.na{opacity:.72}
-.skill-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px}
+.skill-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px;gap:8px}
 .skill-name{font-size:var(--t-sm);font-weight:600;color:var(--tx)}
+.skill-meta{display:flex;align-items:baseline;gap:8px}
+.skill-row.low-conf .skill-score{color:var(--tx3) !important}
+.conf-chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:var(--t-meta);font-weight:600;font-family:var(--font);border:1px solid var(--bd);background:var(--bg4);color:var(--tx3)}
+.conf-chip.conf-low{background:rgba(178,59,44,.08);border-color:rgba(178,59,44,.3);color:var(--a3)}
+.conf-chip.conf-medium{background:rgba(179,129,43,.08);border-color:rgba(179,129,43,.3);color:var(--a2)}
+.conf-chip.conf-high{background:rgba(95,138,79,.08);border-color:rgba(95,138,79,.3);color:var(--a1)}
 .skill-score{font-size:1.15rem;font-weight:700;font-variant-numeric:tabular-nums;color:var(--tx2)}
 .skill-score.good{color:var(--a1)}
 .skill-score.mid{color:var(--a2)}
@@ -417,7 +423,10 @@ code{font-family:var(--font-mono);font-size:.85em;background:var(--bg4);padding:
 .diag-actions{margin-bottom:14px}
 .diag-ai,.diag-drill{display:none;margin-top:14px}
 .diag-ai-card{padding:16px 18px;background:var(--bg3);border:1px solid var(--bd);border-left:3px solid var(--a5);border-radius:var(--r-md)}
-.dai-level{font-size:1.0625rem;font-weight:700;color:var(--a0);margin-bottom:8px}
+.dai-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:8px;flex-wrap:wrap}
+.dai-meta{font-size:var(--t-meta);color:var(--tx3)}
+.dai-stale{color:var(--a2);font-weight:600}
+.dai-level{font-size:1.0625rem;font-weight:700;color:var(--a0)}
 .dai-summary{font-size:var(--t-sm);color:var(--tx);line-height:1.65;margin-bottom:12px}
 .dai-block{margin-top:12px;font-size:var(--t-sm);color:var(--tx2)}
 .dai-block b{display:block;color:var(--tx);margin-bottom:5px}
@@ -437,6 +446,7 @@ code{font-family:var(--font-mono);font-size:.85em;background:var(--bg4);padding:
 .di-answer{margin-top:10px;padding:10px 12px;background:var(--bg4);border-radius:var(--r-sm)}
 .di-a{font-size:var(--t-sm);color:var(--a1);font-weight:600;line-height:1.5}
 .di-explain{font-size:var(--t-meta);color:var(--tx2);margin-top:5px;line-height:1.55}
+.drill-foot{margin-top:14px;padding-top:12px;border-top:1px solid var(--bd);text-align:right}
 
 /* ===== Toasts ===== */
 .toast-container{position:fixed;bottom:24px;right:24px;z-index:100;display:flex;flex-direction:column;gap:10px}

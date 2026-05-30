@@ -622,6 +622,19 @@ async function getVocabLevelStats() {
   return { total, ...dist, knownRatio };
 }
 
+// Total count of "learning activities" the learner has accumulated. Used to
+// decide when a cached AI diagnosis is stale enough to be worth re-running.
+// Counts cheap things (sessions, vocab cards, attempts, structure tokens).
+async function getActivityCount() {
+  const [vocab, sessions, attempts, structTokens] = await Promise.all([
+    DB.vocabulary.count(),
+    DB.readingSessions.count(),
+    DB.translationAttempts.count(),
+    DB.structureTokens.count()
+  ]);
+  return vocab + sessions + attempts + structTokens;
+}
+
 // Bundle every learning signal we have into one object for the proficiency
 // diagnosis view. Pure aggregation — scoring/interpretation happens in app.js
 // so it can run offline (demo mode) without an AI call.
@@ -635,10 +648,17 @@ async function getProficiencySignals() {
     getReadingSpeed(),
     getBooks()
   ]);
-  // CEFR distribution of books that have been difficulty-assessed.
-  const cefrCounts = {};
+  // CEFR distribution of books. Two buckets: every difficulty-assessed book
+  // (cefrCounts) and books the learner has actually read into meaningfully
+  // (engagedCefr, readingProgress ≥ 0.1). The diagnosis uses engagedCefr to
+  // avoid CEFR inflation from "just added but not read" books.
+  const cefrCounts = {}, engagedCefr = {};
   for (const b of books) {
-    if (b.estimatedCefr) cefrCounts[b.estimatedCefr] = (cefrCounts[b.estimatedCefr] || 0) + 1;
+    if (!b.estimatedCefr) continue;
+    cefrCounts[b.estimatedCefr] = (cefrCounts[b.estimatedCefr] || 0) + 1;
+    if ((b.readingProgress || 0) >= 0.1) {
+      engagedCefr[b.estimatedCefr] = (engagedCefr[b.estimatedCefr] || 0) + 1;
+    }
   }
-  return { vocab, structure, roleAcc, transIssues, dependency, speed, cefrCounts };
+  return { vocab, structure, roleAcc, transIssues, dependency, speed, cefrCounts, engagedCefr };
 }

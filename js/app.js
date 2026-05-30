@@ -2021,97 +2021,158 @@ let App = {
     return '기초';
   },
 
-  // 종합 점수 + 실제로 읽어낸 책의 CEFR을 함께 보고 대략적인 CEFR을 추정한다.
-  _overallCefr(score, cefrCounts) {
+  // 종합 점수 + "실제로 읽어낸" 책의 CEFR을 함께 보고 대략적인 CEFR을 추정한다.
+  // engagedCefr(=readingProgress≥10%인 책만)을 쓰므로 담아두기만 한 책으로
+  // CEFR이 부풀려지지 않는다.
+  _overallCefr(score, engagedCefr) {
     const order = ['A2', 'B1', 'B2', 'C1'];
     let base = score >= 80 ? 'C1' : score >= 62 ? 'B2' : score >= 45 ? 'B1' : 'A2';
     let hardest = null;
-    for (const c of order) if (cefrCounts[c]) hardest = c; // order ascending → last hit = hardest
+    for (const c of order) if (engagedCefr && engagedCefr[c]) hardest = c;
     if (hardest && order.indexOf(hardest) > order.indexOf(base)) {
-      // 점수보다 어려운 책을 읽고 있으면 한 단계 보정해서 평균낸다.
+      // 점수보다 어려운 책을 실제로 읽고 있으면 한 단계 보정해서 평균낸다.
       base = order[Math.round((order.indexOf(hardest) + order.indexOf(base)) / 2)];
     }
     return base;
   },
 
+  // 표본 수 → 신뢰도 라벨. 본 점수가 표본 적은 추정이라는 걸 사용자에게 알린다.
+  // low: 단정하지 않음·점수에 회색 라벨, medium: 참고용, high: 안정.
+  _confidence(sample, lowMax, midMax) {
+    if (sample < lowMax) return { level: 'low', labelKo: '표본 적음 · 참고용' };
+    if (sample < midMax) return { level: 'medium', labelKo: '표본 보통' };
+    return { level: 'high', labelKo: '표본 충분' };
+  },
+
   // 수집된 학습 신호를 0~100 영역별 점수표로 환산한다. AI 없이도 동작한다.
+  // 표본이 매우 적으면 점수를 계산하되 conf:'low'로 표시해 단정을 피한다.
   _computeProficiency(sig) {
     const clamp = n => Math.max(0, Math.min(100, Math.round(n)));
     const skills = [];
 
     // 1) 어휘력 — 단어장 상태 분포로 '외운 비율'을 본다.
+    // 카드 5개로는 '외움 비율'이 출렁이므로 임계를 올렸다.
     const v = sig.vocab;
-    if (v.total < 5) {
-      skills.push({ key: 'vocab', label: '어휘력', icon: '📖', score: null, sample: v.total, note: '단어 카드를 5개 이상 모으면 평가돼요.' });
+    if (v.total < 10) {
+      skills.push({ key: 'vocab', label: '어휘력', icon: '📖', score: null, sample: v.total, note: '단어 카드를 10개 이상 모으면 평가돼요.' });
     } else {
       const score = clamp(((v.known + v.learning * 0.4) / v.total) * 100);
-      const weak = v.knownRatio < 0.3 ? '외운 단어 비율이 낮아요. 복습을 더 자주 해보세요.' : null;
-      skills.push({ key: 'vocab', label: '어휘력', icon: '📖', score, sample: v.total, weak,
+      const conf = this._confidence(v.total, 25, 60);
+      const weak = (conf.level !== 'low' && v.knownRatio < 0.3) ? '외운 단어 비율이 낮아요. 복습을 더 자주 해보세요.' : null;
+      skills.push({ key: 'vocab', label: '어휘력', icon: '📖', score, sample: v.total, conf, weak,
         detail: `단어 ${v.total}개 · 외움 ${v.known} / 학습중 ${v.learning} / 새 ${v.new}` });
     }
 
     // 2) 구문 파싱 — 구조 분석 토큰 정확도 + 가장 약한 문장 역할.
+    // 한 세션에 토큰이 ~10개이므로 5세션≈50토큰부터 의미가 있다.
     const st = sig.structure;
-    if (st.totalSessions < 2) {
-      skills.push({ key: 'parse', label: '구문 파싱', icon: '🏷️', score: null, sample: st.totalSessions, note: '구조 분석을 2회 이상 하면 평가돼요.' });
+    if (st.totalSessions < 3) {
+      skills.push({ key: 'parse', label: '구문 파싱', icon: '🏷️', score: null, sample: st.totalSessions, note: '구조 분석을 3회 이상 하면 평가돼요.' });
     } else {
       const score = clamp(st.accuracy * 100);
+      const conf = this._confidence(st.totalSessions, 5, 15);
+      // 약한 역할 탐지: 토큰 5개 이상 + 정확도 70% 미만(저신뢰는 80% 미만)일 때만.
       let weakRole = null, weakAcc = 1;
+      const accThreshold = conf.level === 'low' ? 0.6 : 0.7;
       for (const [role, g] of Object.entries(sig.roleAcc)) {
-        if (role === 'unknown' || g.total < 3) continue;
+        if (role === 'unknown' || g.total < 5) continue;
         if (g.accuracy < weakAcc) { weakAcc = g.accuracy; weakRole = role; }
       }
-      const weak = (weakRole && weakAcc < 0.7) ? `'${weakRole}' 인식 정확도가 ${Math.round(weakAcc * 100)}%로 약해요.` : null;
-      skills.push({ key: 'parse', label: '구문 파싱', icon: '🏷️', score, sample: st.totalSessions, weak, weakRole,
+      const weak = (weakRole && weakAcc < accThreshold) ? `'${weakRole}' 인식 정확도가 ${Math.round(weakAcc * 100)}%로 약해요.` : null;
+      skills.push({ key: 'parse', label: '구문 파싱', icon: '🏷️', score, sample: st.totalSessions, conf, weak, weakRole,
         detail: `구조 분석 ${st.totalSessions}회 · 토큰 정확도 ${Math.round(st.accuracy * 100)}%` });
     }
 
     // 3) 문법·작문 — 해석 훈련에서 지적된 이슈 비율 + 가장 잦은 유형.
+    // 임계 3 → 8로 상향(분모가 작으면 1번 지적에 점수가 크게 출렁임).
+    // 또한 top issue가 의미를 가지려면 자체 빈도가 ≥3 이어야 함.
     const ti = sig.transIssues;
-    if (ti.total < 3) {
-      skills.push({ key: 'grammar', label: '문법·작문', icon: '✍️', score: null, sample: ti.total, note: '해석 훈련을 3회 이상 하면 평가돼요.' });
+    if (ti.total < 8) {
+      skills.push({ key: 'grammar', label: '문법·작문', icon: '✍️', score: null, sample: ti.total, note: '해석 훈련을 8회 이상 하면 평가돼요.' });
     } else {
       const issueRate = ti.scored / ti.total;
       const score = clamp((1 - issueRate) * 100);
+      const conf = this._confidence(ti.total, 15, 40);
       let topIssue = null, topN = 0;
       for (const [k, n] of Object.entries(ti.counts)) if (n > topN) { topN = n; topIssue = k; }
-      const weak = topIssue ? `가장 잦은 실수: ${this._ISSUE_LABELS[topIssue] || topIssue} (${topN}회)` : null;
-      skills.push({ key: 'grammar', label: '문법·작문', icon: '✍️', score, sample: ti.total, weak, topIssue,
+      const weak = (topIssue && topN >= 3) ? `가장 잦은 실수: ${this._ISSUE_LABELS[topIssue] || topIssue} (${topN}회)` : null;
+      skills.push({ key: 'grammar', label: '문법·작문', icon: '✍️', score, sample: ti.total, conf, weak, topIssue,
         detail: `해석 시도 ${ti.total}회 · 지적 ${ti.scored}회` });
     }
 
     // 4) 독해 독립도 — 1000단어당 도움 사용 횟수(낮을수록 좋음).
+    // 산식 100-rate*2.5는 임의의 선형이라 향후 사용자 분포로 보정 필요.
+    // 단어 수가 적으면 신뢰도 낮음으로 라벨.
     const d = sig.dependency.all;
-    if (d.sessions < 2 || d.words < 200) {
-      skills.push({ key: 'independence', label: '독해 독립도', icon: '🧭', score: null, sample: d.sessions, note: '더 읽으면 도움 의존도가 평가돼요.' });
+    if (d.sessions < 2 || d.words < 500) {
+      skills.push({ key: 'independence', label: '독해 독립도', icon: '🧭', score: null, sample: d.words, note: '500단어 이상 읽으면 평가돼요.' });
     } else {
-      const score = clamp(100 - d.rate * 2.5); // 0회→100점, 40회→0점
-      const weak = d.rate >= 25 ? `1000단어당 도움 ${d.rate}회로 의존도가 높아요.` : null;
-      skills.push({ key: 'independence', label: '독해 독립도', icon: '🧭', score, sample: d.sessions, weak,
+      const score = clamp(100 - d.rate * 2.5);
+      const conf = this._confidence(d.words, 2000, 8000);
+      const weak = (conf.level !== 'low' && d.rate >= 25) ? `1000단어당 도움 ${d.rate}회로 의존도가 높아요.` : null;
+      skills.push({ key: 'independence', label: '독해 독립도', icon: '🧭', score, sample: d.words, conf, weak,
         detail: `읽은 단어 ${d.words.toLocaleString()} · 도움률 ${d.rate}/1000` });
     }
 
-    // 5) 읽기 속도 — 보조 신호(가중치 낮음).
+    // 5) 읽기 속도 — 보조 신호. wpm 정규화 (wpm-40)/160 도 임의의 상수.
+    // getReadingSpeed()는 ≥300단어 충족 시에만 값을 돌려주므로 표본 보장은 그쪽에서 함.
     const wpm = sig.speed;
     if (wpm == null) {
       skills.push({ key: 'speed', label: '읽기 속도', icon: '⚡', score: null, sample: 0, note: '충분히 읽으면 속도가 추정돼요.' });
     } else {
       const score = clamp(((wpm - 40) / (200 - 40)) * 100);
-      const weak = wpm < 90 ? `분당 ${wpm}단어로 다소 느린 편이에요.` : null;
-      skills.push({ key: 'speed', label: '읽기 속도', icon: '⚡', score, sample: 1, weak, detail: `약 ${wpm} WPM` });
+      // 충분히 읽지 않은 평균값은 늘 medium 이하로 본다.
+      const conf = this._confidence(d.words || 0, 2000, 8000);
+      const weak = (conf.level !== 'low' && wpm < 90) ? `분당 ${wpm}단어로 다소 느린 편이에요.` : null;
+      skills.push({ key: 'speed', label: '읽기 속도', icon: '⚡', score, sample: 1, conf, weak, detail: `약 ${wpm} WPM` });
     }
 
     const scored = skills.filter(s => s.score != null);
     const hasData = scored.length > 0;
-    const weights = { vocab: 1, parse: 1, grammar: 1, independence: 1, speed: 0.5 };
+    // 신뢰도 가중치: low는 절반만 반영해 종합 점수가 표본 적은 영역에 끌려가지 않게.
+    const baseW = { vocab: 1, parse: 1, grammar: 1, independence: 1, speed: 0.5 };
+    const confMul = { low: 0.5, medium: 0.85, high: 1 };
     let wsum = 0, wtot = 0;
-    for (const s of scored) { const w = weights[s.key] || 1; wsum += s.score * w; wtot += w; }
+    for (const s of scored) {
+      const w = (baseW[s.key] || 1) * (confMul[s.conf?.level] ?? 1);
+      wsum += s.score * w; wtot += w;
+    }
     const overallScore = wtot ? Math.round(wsum / wtot) : null;
-    const core = scored.filter(s => s.key !== 'speed');
+    // 약점 후보는 신뢰도 low를 제외한 영역(읽기 속도 제외)에서 고른다.
+    const core = scored.filter(s => s.key !== 'speed' && s.conf?.level !== 'low');
     const weakest = core.length ? core.reduce((a, b) => (b.score < a.score ? b : a)) : null;
-    const cefr = this._overallCefr(overallScore, sig.cefrCounts);
+    const cefr = this._overallCefr(overallScore, sig.engagedCefr);
     const levelKo = this._levelLabel(overallScore);
-    return { skills, scored, hasData, overallScore, weakest, cefr, levelKo };
+    // 종합 신뢰도: 가중치 충족 정도 (저신뢰 비중이 크면 'low').
+    const maxWtot = Object.values(baseW).reduce((a, b) => a + b, 0);
+    const overallConf = wtot >= maxWtot * 0.75 ? 'high' : wtot >= maxWtot * 0.45 ? 'medium' : 'low';
+    return { skills, scored, hasData, overallScore, overallConf, weakest, cefr, levelKo };
+  },
+
+  // AI 진단 재호출 가드: 마지막 호출 이후 7일 또는 새 활동 30건 이상일 때만
+  // 새로 호출한다. 그 사이엔 localStorage에 캐시된 결과를 즉시 보여주고
+  // '새로 진단' 버튼으로 강제 갱신할 수 있다.
+  _DIAG_CACHE_KEY: 'es_diag_ai_v1',
+  _DIAG_STALE_DAYS: 7,
+  _DIAG_STALE_ACTIVITIES: 30,
+
+  _loadDiagCache() {
+    try { return JSON.parse(localStorage.getItem(this._DIAG_CACHE_KEY) || 'null'); }
+    catch { return null; }
+  },
+  _saveDiagCache(data, activityCount) {
+    try {
+      localStorage.setItem(this._DIAG_CACHE_KEY, JSON.stringify({
+        data, activityCount, ts: Date.now()
+      }));
+    } catch { /* quota or disabled */ }
+  },
+  _isDiagStale(cache, activityNow) {
+    if (!cache) return true;
+    const ageMs = Date.now() - (cache.ts || 0);
+    if (ageMs > this._DIAG_STALE_DAYS * 86400000) return true;
+    if (activityNow - (cache.activityCount || 0) >= this._DIAG_STALE_ACTIVITIES) return true;
+    return false;
   },
 
   async renderDiagnosis() {
@@ -2121,6 +2182,7 @@ let App = {
     const sig = await getProficiencySignals();
     const p = this._computeProficiency(sig);
     this._lastProficiency = p;
+    this._lastActivityCount = await getActivityCount();
 
     if (!p.hasData) {
       body.innerHTML = `<div class="review-empty"><div class="icon">🎯</div>아직 진단할 학습 기록이 충분하지 않아요.<br>책을 읽고, 단어를 모으고, 해석·구조 분석을 해보면<br>여기서 영어 실력과 약점을 분석해 드려요.</div>`;
@@ -2128,6 +2190,7 @@ let App = {
     }
 
     const lvlCls = s => (s >= 70 ? 'good' : s >= 45 ? 'mid' : 'low');
+    const confChip = c => c ? `<span class="conf-chip conf-${c.level}" title="${escapeHtml(c.labelKo)}">${escapeHtml(c.labelKo)}</span>` : '';
     const bar = s => {
       if (s.score == null) {
         return `<div class="skill-row na">
@@ -2137,29 +2200,34 @@ let App = {
         </div>`;
       }
       const c = lvlCls(s.score);
-      return `<div class="skill-row">
-        <div class="skill-head"><span class="skill-name">${s.icon} ${s.label}</span><span class="skill-score ${c}">${s.score}</span></div>
+      const isLow = s.conf?.level === 'low';
+      return `<div class="skill-row${isLow ? ' low-conf' : ''}">
+        <div class="skill-head">
+          <span class="skill-name">${s.icon} ${s.label}</span>
+          <span class="skill-meta">${confChip(s.conf)}<span class="skill-score ${c}">${s.score}</span></span>
+        </div>
         <div class="skill-track"><div class="skill-fill ${c}" style="width:${s.score}%"></div></div>
         <div class="skill-detail">${escapeHtml(s.detail || '')}${s.weak ? ` · <span class="skill-weak">⚠️ ${escapeHtml(s.weak)}</span>` : ''}</div>
       </div>`;
     };
 
     const w = p.weakest;
+    const overallChip = p.overallConf === 'low' ? '<span class="conf-chip conf-low" title="전체 표본이 적어요. 참고용으로 보세요.">전체 표본 적음 · 참고용</span>' : '';
     body.innerHTML = `
       <div class="diag-overview">
         <div class="diag-cefr">${escapeHtml(p.cefr)}</div>
         <div class="diag-level">
-          <div class="diag-level-txt">${escapeHtml(p.levelKo)} · 종합 ${p.overallScore}점</div>
+          <div class="diag-level-txt">${escapeHtml(p.levelKo)} · 종합 ${p.overallScore}점 ${overallChip}</div>
           <div class="diag-overall-bar"><div class="skill-fill ${lvlCls(p.overallScore)}" style="width:${p.overallScore}%"></div></div>
         </div>
       </div>
-      <div class="diag-note">영역별 점수는 단어장·구조 분석·해석 훈련·읽기 기록에서 자동 계산됩니다. 더 많이 학습할수록 정확해져요.</div>
+      <div class="diag-note">영역별 점수는 단어장·구조 분석·해석 훈련·읽기 기록에서 자동 계산됩니다. 표본이 적은 영역은 신뢰도 라벨로 표시돼요.</div>
       <div class="skill-list">${p.skills.map(bar).join('')}</div>
       ${w ? `<div class="diag-weak-card">
         <div class="dw-title">🎯 가장 약한 영역: ${w.icon} ${escapeHtml(w.label)} (${w.score}점)</div>
         <div class="dw-detail">${escapeHtml(w.weak || w.detail || '')}</div>
         <button class="btn" id="diag-drill-btn">🎯 이 약점 보완 학습 시작</button>
-      </div>` : ''}
+      </div>` : '<div class="diag-note">신뢰도 높은 영역에서 두드러진 약점이 아직 보이지 않아요. 학습이 더 쌓이면 약점을 자동으로 짚어드릴게요.</div>'}
       <div class="diag-actions">
         <button class="btn-s" id="diag-ai-btn">🤖 AI 정밀 진단 받기</button>
       </div>
@@ -2167,42 +2235,88 @@ let App = {
       <div id="diag-drill" class="diag-drill"></div>
     `;
 
-    $('diag-ai-btn')?.addEventListener('click', () => this._aiDiagnose());
-    $('diag-drill-btn')?.addEventListener('click', () => this.startWeaknessDrill());
+    $('diag-ai-btn')?.addEventListener('click', () => this._aiDiagnose(false));
+    $('diag-drill-btn')?.addEventListener('click', () => this.startWeaknessDrill(false));
+
+    // 마지막 진단이 있으면 자동 표시(가드 안 거치고 즉시 캐시 노출).
+    const cache = this._loadDiagCache();
+    if (cache?.data) this._renderDiagAI(cache.data, cache.ts, this._isDiagStale(cache, this._lastActivityCount));
   },
 
-  // 로컬 점수표를 AI에게 보내 서술형 정밀 진단 + 학습 계획을 받는다.
-  async _aiDiagnose() {
+  _renderDiagAI(data, ts, stale) {
     const out = $('diag-ai');
-    const p = this._lastProficiency;
-    if (!out || !p) return;
+    if (!out) return;
     out.style.display = 'block';
-    out.innerHTML = '🤖 AI가 점수표를 분석하는 중...';
-    const profile = {
-      overall: { score: p.overallScore, cefr: p.cefr, levelKo: p.levelKo },
-      skills: p.scored.map(s => ({ key: s.key, label: s.label, score: s.score, sample: s.sample, weak: s.weak || null }))
-    };
-    const data = await AI.assessProficiency(profile);
-    if (data.error) { out.innerHTML = '⚠️ 진단을 불러오지 못했어요. 잠시 후 다시 시도해주세요.'; return; }
     const list = (arr, tag) => (arr && arr.length) ? `<${tag}>${arr.map(x => `<li>${escapeHtml(x)}</li>`).join('')}</${tag}>` : '';
+    const when = ts ? `${new Date(ts).toLocaleDateString()} 진단` : '';
     out.innerHTML = `
       <div class="diag-ai-card">
-        <div class="dai-level">🧭 ${escapeHtml(data.levelKo || '')}</div>
+        <div class="dai-head">
+          <div class="dai-level">🧭 ${escapeHtml(data.levelKo || '')}</div>
+          <div class="dai-meta">${escapeHtml(when)}${stale ? ' · <span class="dai-stale">새 활동이 쌓였어요</span>' : ''}</div>
+        </div>
         <div class="dai-summary">${escapeHtml(data.summaryKo || '')}</div>
         ${(data.strengths && data.strengths.length) ? `<div class="dai-block"><b>💪 강점</b>${list(data.strengths, 'ul')}</div>` : ''}
         ${(data.weaknesses && data.weaknesses.length) ? `<div class="dai-block"><b>⚠️ 약점</b>${list(data.weaknesses, 'ul')}</div>` : ''}
         ${(data.planKo && data.planKo.length) ? `<div class="dai-block"><b>📋 학습 계획</b>${list(data.planKo, 'ol')}</div>` : ''}
+        ${stale ? '<button class="btn-s mt-8" id="diag-ai-refresh">🔄 새로 진단</button>' : ''}
       </div>`;
+    $('diag-ai-refresh')?.addEventListener('click', () => this._aiDiagnose(true));
+  },
+
+  // 로컬 점수표를 AI에게 보내 서술형 정밀 진단 + 학습 계획을 받는다.
+  // 가드: 캐시가 신선하면 (7일 미만 + 활동 30건 미만) 캐시 결과 즉시 표시하고
+  // AI 호출은 생략. force=true 면 가드를 우회한다.
+  async _aiDiagnose(force) {
+    const out = $('diag-ai');
+    const p = this._lastProficiency;
+    if (!out || !p) return;
+    const cache = this._loadDiagCache();
+    if (!force && cache && !this._isDiagStale(cache, this._lastActivityCount || 0)) {
+      this._renderDiagAI(cache.data, cache.ts, false);
+      this.showToast('🧭 최근 진단을 표시했어요. 새 학습이 더 쌓이면 자동으로 갱신돼요.', 'info');
+      return;
+    }
+    out.style.display = 'block';
+    out.innerHTML = '🤖 AI가 점수표를 분석하는 중...';
+    const profile = {
+      overall: { score: p.overallScore, cefr: p.cefr, levelKo: p.levelKo, confidence: p.overallConf },
+      skills: p.scored.map(s => ({
+        key: s.key, label: s.label, score: s.score, sample: s.sample,
+        confidence: s.conf?.level || null, weak: s.weak || null
+      }))
+    };
+    const data = await AI.assessProficiency(profile);
+    if (data.error) { out.innerHTML = '⚠️ 진단을 불러오지 못했어요. 잠시 후 다시 시도해주세요.'; return; }
+    if (!data.isDemo) this._saveDiagCache(data, this._lastActivityCount || 0);
+    this._renderDiagAI(data, Date.now(), false);
   },
 
   // 가장 약한 영역을 집중 보완하는 맞춤 연습 문제를 생성·렌더링한다.
-  async startWeaknessDrill() {
+  // 캐시 정책: 약점 영역(key)이 같으면 캐시된 문제 재사용, 영역이 바뀌면 새로 생성.
+  // force=true 면 같은 영역이어도 새 문제로 갱신.
+  _DRILL_CACHE_KEY: 'es_diag_drill_v1',
+  _loadDrillCache() {
+    try { return JSON.parse(localStorage.getItem(this._DRILL_CACHE_KEY) || 'null'); }
+    catch { return null; }
+  },
+  _saveDrillCache(weakKey, data) {
+    try { localStorage.setItem(this._DRILL_CACHE_KEY, JSON.stringify({ weakKey, data, ts: Date.now() })); }
+    catch { /* ignore */ }
+  },
+
+  async startWeaknessDrill(force) {
     const out = $('diag-drill');
     const p = this._lastProficiency;
     if (!out || !p || !p.weakest) return;
+    const w = p.weakest;
+    const cache = this._loadDrillCache();
+    if (!force && cache && cache.weakKey === w.key && cache.data) {
+      this._renderDrill(cache.data, w, true);
+      return;
+    }
     out.style.display = 'block';
     out.innerHTML = '🎯 약점 맞춤 문제를 만드는 중...';
-    const w = p.weakest;
     let detail = w.weak || w.detail || '';
     if (w.key === 'parse' && w.weakRole) detail = `구조 파싱에서 '${w.weakRole}' 역할 인식이 약함. ${detail}`;
     if (w.key === 'grammar' && w.topIssue) detail = `해석 훈련에서 '${this._ISSUE_LABELS[w.topIssue] || w.topIssue}' 실수가 잦음. ${detail}`;
@@ -2211,9 +2325,17 @@ let App = {
       out.innerHTML = `<div class="drill-card"><div class="drill-tip">${escapeHtml(data.tipKo || '⚠️ 문제를 생성하지 못했어요. 다시 시도해주세요.')}</div></div>`;
       return;
     }
+    if (!data.isDemo) this._saveDrillCache(w.key, data);
+    this._renderDrill(data, w, false);
+  },
+
+  _renderDrill(data, w, cached) {
+    const out = $('diag-drill');
+    if (!out) return;
+    out.style.display = 'block';
     out.innerHTML = `
       <div class="drill-card">
-        <div class="drill-focus">🎯 ${escapeHtml(data.focusKo || w.label)}</div>
+        <div class="drill-focus">🎯 ${escapeHtml(data.focusKo || w.label)}${cached ? ' <span class="dai-meta">· 저장된 문제</span>' : ''}</div>
         ${data.tipKo ? `<div class="drill-tip">💡 ${escapeHtml(data.tipKo)}</div>` : ''}
         <div class="drill-items">
           ${data.drills.map((d, i) => `
@@ -2227,6 +2349,7 @@ let App = {
               </div>
             </div>`).join('')}
         </div>
+        <div class="drill-foot"><button class="btn-s" id="drill-refresh">🔄 다른 문제로</button></div>
       </div>`;
     out.querySelectorAll('.di-reveal').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -2234,6 +2357,7 @@ let App = {
         if (ans) { ans.style.display = 'block'; btn.style.display = 'none'; }
       });
     });
+    $('drill-refresh')?.addEventListener('click', () => this.startWeaknessDrill(true));
   },
 
   /* ===== Backup ===== */

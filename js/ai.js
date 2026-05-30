@@ -17,9 +17,9 @@ const AI = {
   _mode: 'demo',
   _storageMode: 'session',
   // Fast mode: ask the model to spend little/no budget on hidden reasoning.
-  // Sent as OpenAI-compatible `reasoning_effort`. Toggle off if the endpoint
-  // rejects the param.
-  _fastMode: true,
+  // Sent as OpenAI-compatible `reasoning_effort`. Default OFF because some
+  // endpoints (e.g. the opencode proxy) return empty content when it's set.
+  _fastMode: false,
 
   // Reading context for No-spoiler
   _readingContext: { bookTitle: '', chunkIndex: 0, totalChunks: 0 },

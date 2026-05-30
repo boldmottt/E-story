@@ -443,14 +443,14 @@ code{font-family:var(--font-mono);font-size:.85em;background:var(--bg4);padding:
 
 /* ===== Responsive ===== */
 @media(max-width:768px){
-  .sidebar{position:fixed;bottom:0;left:0;right:0;width:100%;height:60px;min-width:0;flex-direction:row;border-top:1px solid var(--bd);border-right:none;z-index:20;box-shadow:0 -2px 16px rgba(60,45,25,.08)}
+  .sidebar{position:fixed;bottom:0;left:0;right:0;width:100%;height:calc(60px + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom);min-width:0;flex-direction:row;border-top:1px solid var(--bd);border-right:none;z-index:20;box-shadow:0 -2px 16px rgba(60,45,25,.08)}
   .sidebar-head,.sidebar-foot{display:none}
   .sidebar-nav{flex-direction:row;justify-content:space-around;width:100%;height:100%;padding:0}
   .nav-item{flex-direction:column;gap:3px;padding:8px 4px;font-size:var(--t-meta);border-radius:0}
   .nav-item.active{box-shadow:none;background:transparent;border-top:2px solid var(--a0)}
   .nav-item .ico{font-size:19px;width:auto;opacity:.85}
   .nav-item span:not(.ico):not(.queue-badge){font-size:var(--t-meta);white-space:nowrap}
-  .main{margin-left:0;padding-bottom:60px}
+  .main{margin-left:0;padding-bottom:calc(60px + env(safe-area-inset-bottom))}
   .topbar{padding:8px 16px;height:52px;min-height:52px}
   .content{padding:16px}
   .bookshelf{grid-template-columns:1fr}
@@ -458,12 +458,12 @@ code{font-family:var(--font-mono);font-size:.85em;background:var(--bg4);padding:
   .upload-area{padding:36px 16px}
   .reader-wrap{padding:16px 0 80px;font-size:1.0625rem}
   .ch-nav-btn{font-size:var(--t-sm);padding:7px 12px}
-  .quick-menu.open{position:fixed;bottom:68px;left:8px;right:8px;width:auto !important;max-width:none;max-height:40dvh;overflow-y:auto}
-  .study-panel.open{width:100%;max-width:100%;right:0;bottom:60px}
+  .quick-menu.open{position:fixed;bottom:calc(68px + env(safe-area-inset-bottom));left:8px;right:8px;width:auto !important;max-width:none;max-height:40dvh;overflow-y:auto}
+  .study-panel.open{width:100%;max-width:100%;right:0;bottom:calc(60px + env(safe-area-inset-bottom))}
   .settings-group{padding:8px 16px 14px}
   .settings-row{flex-direction:column;align-items:stretch;gap:6px}
   .settings-row input,.settings-row select{width:100% !important}
-  .toast-container{bottom:76px;right:12px;left:12px}
+  .toast-container{bottom:calc(76px + env(safe-area-inset-bottom));right:12px;left:12px}
   .toast{min-width:0}
   button,.btn,.btn-s,.topbar-btn,.ch-nav-btn,.mode-btn,.buddy-btn,.vocab-select-word,.study-submit,.review-btn,.queue-item .qi-action{min-height:42px}
   .qm-word{padding:7px 11px}

@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,500;0,7..72,600;1,7..72,400;1,7..72,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=1.29">
+<link rel="stylesheet" href="css/style.css?v=1.31">
 </head>
 <body>
 
@@ -131,11 +131,11 @@
       <h3>🤖 AI 피드백 (BYOK)</h3>
       <div class="settings-row">
         <label>API URL</label>
-        <input type="text" id="settings-url" placeholder="/api/zen/go/v1">
+        <input type="text" id="settings-url" placeholder="https://api.deepseek.com/v1">
       </div>
       <div class="settings-row">
         <label>모델</label>
-        <input type="text" id="settings-model" placeholder="deepseek-v4-flash">
+        <input type="text" id="settings-model" placeholder="deepseek-chat">
       </div>
       <div class="settings-row">
         <label>API Key</label>
@@ -148,7 +148,7 @@
           <option value="persist">브라우저에 저장</option>
         </select>
       </div>
-      <div class="settings-note">• <b>로컬(serve.py)</b>: 기본값 <code>/api/zen/go/v1</code>로 자동 동작, 키 입력 불필요(서버 <code>OPENCODE_API_KEY</code> 사용).<br>• <b>GitHub Pages 등 정적 호스팅</b>: Cloudflare Worker 프록시를 배포하고(<code>cloudflare-worker/</code> 참고) URL을 <code>https://&lt;워커&gt;.workers.dev/api/zen/go/v1</code>로 지정하면 키 없이 동작.<br>• 직접 OpenAI 호환 API를 쓰려면 전체 URL + 본인 키를 입력하세요. 키 없고 프록시도 없으면 데모 모드.</div>
+      <div class="settings-note">• <b>기본값</b>: <code>https://api.deepseek.com/v1</code> + 모델 <code>deepseek-chat</code> — <a href="https://platform.deepseek.com" target="_blank">DeepSeek 콘솔</a>에서 API 키를 발급받아 입력하세요.<br>• <b>로컬(serve.py)</b>: <code>/api/zen/go/v1</code>로 자동 전환, 키 입력 불필요(서버 <code>OPENCODE_API_KEY</code> 사용).<br>• <b>Cloudflare Worker 프록시</b>: <code>cloudflare-worker/</code> 참고, 키를 Worker에 보관하면 브라우저에 노출되지 않음.<br>• OpenAI·Anthropic 등 다른 OpenAI-호환 API도 URL + 키를 직접 입력하면 사용 가능. 키 없고 프록시도 없으면 데모 모드.</div>
     </div>
 
     <div class="settings-group">
@@ -240,12 +240,12 @@
 </div>
 
 <!-- ===== Scripts (cache-busting: bump v=1.1 on deploy to force fresh files) ===== -->
-<script src="vendor/dexie.js?v=1.29"></script>
-<script src="js/db.js?v=1.29"></script>
-<script src="js/ai.js?v=1.29"></script>
-<script src="js/tts.js?v=1.29"></script>
-<script src="js/sync.js?v=1.29"></script>
-<script src="js/app.js?v=1.29"></script>
+<script src="vendor/dexie.js?v=1.31"></script>
+<script src="js/db.js?v=1.31"></script>
+<script src="js/ai.js?v=1.31"></script>
+<script src="js/tts.js?v=1.31"></script>
+<script src="js/sync.js?v=1.31"></script>
+<script src="js/app.js?v=1.31"></script>
 
 </body>
 </html>

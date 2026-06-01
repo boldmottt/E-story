@@ -433,8 +433,8 @@ async function getSettings() {
       id: 1, theme: 'dark', fontSize: 16, lineHeight: 1.9,
       ttsRate: 0.9, ttsVoice: '',
       aiProvider: '',
-      aiBaseUrl: isLocal ? '/api/zen/go/v1' : 'https://api.openai.com/v1',
-      aiModel: isLocal ? 'deepseek-v4-flash' : 'gpt-4o-mini',
+      aiBaseUrl: isLocal ? '/api/zen/go/v1' : 'https://api.deepseek.com/v1',
+      aiModel: isLocal ? 'deepseek-v4-flash' : 'deepseek-chat',
       aiKey: '', aiKeyMode: 'session',
       apiKeyStorageMode: 'session',
       dailyCardCap: 5,
@@ -443,19 +443,19 @@ async function getSettings() {
     await DB.settings.put(s);
   } else if (
     isLocal &&
-    s.aiBaseUrl === 'https://api.openai.com/v1' && s.aiModel === 'gpt-4o-mini'
+    (s.aiBaseUrl === 'https://api.openai.com/v1' || s.aiBaseUrl === 'https://api.deepseek.com/v1') &&
+    (s.aiModel === 'gpt-4o-mini' || s.aiModel === 'deepseek-chat')
   ) {
     // Only on the local proxy host: migrate untouched legacy defaults to the
-    // proxied opencode setup. On static hosting the OpenAI default is correct.
+    // proxied opencode setup.
     s.aiBaseUrl = '/api/zen/go/v1';
     s.aiModel = 'deepseek-v4-flash';
     await DB.settings.put(s);
   } else if (!isLocal && s.aiBaseUrl?.startsWith('/')) {
     // Static hosting has no same-origin proxy, so a stored relative path would
-    // always fail. Reset to the OpenAI-compatible default (user then sets their
-    // own key, or a Cloudflare Worker URL — see cloudflare-worker/).
-    s.aiBaseUrl = 'https://api.openai.com/v1';
-    s.aiModel = 'gpt-4o-mini';
+    // always fail. Reset to the DeepSeek default (user then sets their own key).
+    s.aiBaseUrl = 'https://api.deepseek.com/v1';
+    s.aiModel = 'deepseek-chat';
     await DB.settings.put(s);
   }
   return s;

@@ -99,6 +99,14 @@ let App = {
     
     // Vocab-header delegation (search, filter, review)
     document.querySelector('.vocab-header')?.addEventListener('click', (e) => {
+      const seg = e.target.closest('.seg-btn[data-filter]');
+      if (seg) {
+        seg.parentElement.querySelectorAll('.seg-btn').forEach(b => b.classList.toggle('active', b === seg));
+        const sel = $('vocab-filter');
+        if (sel) sel.value = seg.dataset.filter;
+        this.renderVocabulary();
+        return;
+      }
       const btn = e.target.closest('[data-action]');
       if (!btn) return;
       if (btn.dataset.action === 'review') this.startReview();
@@ -1756,11 +1764,23 @@ let App = {
 
   /* ===== Vocabulary ===== */
   async renderVocabulary() {
-    const words = await getVocabulary(this.currentBook?.id);
+    const all = await getVocabulary(this.currentBook?.id);
     const grid = $('vocab-grid');
     grid.innerHTML = '';
-    
-    if (!words.length) {
+
+    const q = ($('vocab-search')?.value || '').trim().toLowerCase();
+    const filter = $('vocab-filter')?.value || 'all';
+    const words = all.filter(w => {
+      if (filter !== 'all' && w.status !== filter) return false;
+      if (q && !(
+        w.word?.toLowerCase().includes(q) ||
+        w.meaningKo?.toLowerCase().includes(q) ||
+        w.contextSentence?.toLowerCase().includes(q)
+      )) return false;
+      return true;
+    });
+
+    if (!all.length) {
       grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1">
         <svg class="empty-illo tinted" viewBox="0 0 120 80"><use href="#illo-spread"/></svg>
         <div class="empty-title">단어장이 비어 있어요</div>
@@ -1768,7 +1788,14 @@ let App = {
       </div>`;
       return;
     }
-    
+    if (!words.length) {
+      grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1">
+        <div class="empty-title">조건에 맞는 단어가 없어요</div>
+        <div class="empty-body">검색어를 지우거나 다른 필터를 선택해 보세요.</div>
+      </div>`;
+      return;
+    }
+
     words.forEach(w => {
       grid.innerHTML += `
         <div class="vocab-card">

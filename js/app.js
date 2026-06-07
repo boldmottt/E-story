@@ -21,10 +21,41 @@ let App = {
     await AI.init();
     TTS.init();
     
-    // Navigation
-    document.querySelectorAll('.nav-item').forEach(item => {
-      item.addEventListener('click', () => this.switchView(item.dataset.view));
+    // Navigation (sidebar + bottom tabbar + more-sheet rows)
+    document.querySelectorAll('.nav-item, .tab[data-view], .sheet-row[data-view]').forEach(item => {
+      item.addEventListener('click', () => {
+        this.switchView(item.dataset.view);
+        this._closeMoreSheet();
+      });
     });
+
+    // Bottom tabbar non-nav actions
+    document.querySelectorAll('.tab[data-action], .tabbar .tab-cta').forEach(item => {
+      item.addEventListener('click', () => {
+        const action = item.dataset.action;
+        if (action === 'more') this._openMoreSheet();
+        else if (action === 'review') this.startReview();
+      });
+    });
+    $('more-backdrop')?.addEventListener('click', () => this._closeMoreSheet());
+
+    // Vocab segmented filter control
+    document.querySelector('#vocabulary-page .seg-control')?.addEventListener('click', (e) => {
+      const btn = e.target.closest('.seg-btn');
+      if (!btn) return;
+      document.querySelectorAll('#vocabulary-page .seg-btn').forEach(b => b.classList.toggle('active', b === btn));
+      const filterSel = $('vocab-filter');
+      if (filterSel) { filterSel.value = btn.dataset.filter; filterSel.dispatchEvent(new Event('change', { bubbles: true })); }
+    });
+
+    // Sticky-title scroll behavior on the stage
+    const stage = document.querySelector('.stage');
+    const topbar = document.querySelector('.topbar');
+    if (stage && topbar) {
+      stage.addEventListener('scroll', () => {
+        topbar.classList.toggle('scrolled', stage.scrollTop > 18);
+      }, { passive: true });
+    }
     
     // Settings
     $('settings-save')?.addEventListener('click', () => this.saveSettings());
@@ -139,6 +170,9 @@ let App = {
     
     // Queue clear
     $('queue-clear')?.addEventListener('click', () => this.clearQueue());
+
+    // Reader → back to bookshelf
+    $('topbar-back')?.addEventListener('click', () => this.switchView('bookshelf'));
     
     // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
@@ -195,8 +229,9 @@ let App = {
     // Flush any open reading session when the tab closes (dependency logging).
     window.addEventListener('beforeunload', () => this._endReadingSession());
     
-    // Throttled scroll position save
-    document.addEventListener('scroll', () => {
+    // Throttled scroll position save (scroll happens inside .stage in v2.0)
+    const stageEl = document.querySelector('.stage');
+    (stageEl || document).addEventListener('scroll', () => {
       if (this.currentView !== 'reader') return;
       if (this._scrollThrottleTimer) clearTimeout(this._scrollThrottleTimer);
       this._scrollThrottleTimer = setTimeout(() => {
@@ -207,7 +242,8 @@ let App = {
 
   _saveScrollPosition() {
     if (!this.currentBook) return;
-    const offset = window.scrollY || window.pageYOffset;
+    const stage = document.querySelector('.stage');
+    const offset = stage ? stage.scrollTop : (window.scrollY || window.pageYOffset);
     updateBookProgress(this.currentBook.id, this.currentSelectedChunkIndex, offset, this._page || 0);
   },
 
@@ -233,7 +269,11 @@ let App = {
     if (this.currentView === 'reader' && view !== 'reader') this._endReadingSession();
     this.currentView = view;
     document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.view === view));
+    document.querySelectorAll('.tab[data-view]').forEach(n => n.classList.toggle('active', n.dataset.view === view));
     document.querySelectorAll('.content').forEach(c => c.classList.toggle('active', c.id === view + '-page'));
+    // Reset stage scroll so large-title is visible
+    const stage = document.querySelector('.stage');
+    if (stage) stage.scrollTop = 0;
     
     const renderers = {
       vocabulary: () => this.renderVocabulary(),
@@ -254,17 +294,29 @@ let App = {
 
   updateTopbarTitle(view) {
     const titles = {
-      bookshelf: '📚 내 서재',
+      bookshelf: '서재',
       reader: this.currentBook?.title || '읽기',
-      vocabulary: '📖 단어장',
-      queue: '⏰ 나중에 공부',
-      highlights: '⭐ 하이라이트',
-      history: '📝 피드백 이력',
-      report: '📊 리포트',
-      diagnosis: '🎯 실력 진단',
-      settings: '⚙️ 설정'
+      vocabulary: '단어장',
+      queue: '나중에 공부',
+      highlights: '하이라이트',
+      history: '피드백 이력',
+      report: '리포트',
+      diagnosis: '실력 진단',
+      settings: '설정'
     };
     $('topbar-title').textContent = titles[view] || 'E-Story';
+    // Reader hides large-title & shows back button; other views, hide back
+    const backBtn = $('topbar-back');
+    if (backBtn) backBtn.hidden = (view !== 'reader');
+  },
+
+  _openMoreSheet() {
+    $('more-sheet')?.classList.add('open');
+    $('more-backdrop')?.classList.add('open');
+  },
+  _closeMoreSheet() {
+    $('more-sheet')?.classList.remove('open');
+    $('more-backdrop')?.classList.remove('open');
   },
 
   /* ===== Bookshelf ===== */
@@ -272,8 +324,25 @@ let App = {
     const books = await getBooks();
     const grid = $('bookshelf-grid');
     
-    let html = '<div class="upload-area" id="upload-area"><div class="upload-icon">📂</div><div class="upload-label">txt 파일을 업로드하세요</div><div class="upload-hint">또는 여기로 드래그 & 드롭</div><input type="file" id="file-input" accept=".txt" class="hidden-input"></div>';
-    html += '<div class="url-import"><input type="text" id="url-input" placeholder="또는 CORS 허용된 URL / 로컬 서버 주소 (맥: python3 serve.py)" class="url-field"><button class="btn-s" id="url-load-btn">📥 불러오기</button></div>';
+    const hasBooks = books.length > 0;
+    let html = '';
+    if (!hasBooks) {
+      html += `<div class="upload-empty" id="upload-area">
+        <svg class="empty-illo" viewBox="0 0 120 80" aria-hidden="true"><use href="#illo-shelf"/></svg>
+        <div class="empty-title">첫 책을 불러오세요</div>
+        <div class="empty-body">.txt 파일을 올리면 챕터·문장 단위로 자동 정리됩니다. 읽다 만난 단어와 표현은 자동으로 단어장에 쌓여요.</div>
+        <div class="upload-actions">
+          <button class="btn" type="button" id="upload-pick">
+            <svg class="ico-svg" width="16" height="16" aria-hidden="true"><use href="#i-cloud-up"/></svg>
+            <span>.txt 파일 선택</span>
+          </button>
+          <div class="url-import"><input type="text" id="url-input" placeholder="또는 URL로 불러오기" class="url-field"><button class="btn-s" id="url-load-btn">불러오기</button></div>
+        </div>
+        <input type="file" id="file-input" accept=".txt" class="hidden-input">
+      </div>`;
+    } else {
+      html += '<div class="url-import shelf-toolbar" style="grid-column:1/-1"><input type="text" id="url-input" placeholder="URL로 새 책 불러오기" class="url-field"><button class="btn-s" id="upload-pick" aria-label="파일 선택"><svg class="ico-svg" width="16" height="16"><use href="#i-plus"/></svg></button><input type="file" id="file-input" accept=".txt" class="hidden-input"><button class="btn-s" id="url-load-btn">불러오기</button></div>';
+    }
 
     books.forEach(book => {
       const pct = book.readingProgress ?? (book.totalChunks > 0 ? Math.round((book.currentChunk / book.totalChunks) * 100) : 0);
@@ -282,20 +351,21 @@ let App = {
         ? `<span class="diff-badge ${book.difficultyBand}" title="적합도: ${bandLabel[book.difficultyBand] || ''}">${escapeHtml(book.estimatedCefr || '')}</span>`
         : '';
       html += `<div class="book-card" data-id="${book.id}">
-        <button class="book-del" data-action="delete" data-id="${book.id}" title="책 삭제" aria-label="책 삭제">✕</button>
+        <button class="book-del" data-action="delete" data-id="${book.id}" title="책 삭제" aria-label="책 삭제"><svg class="ico-svg" width="14" height="14"><use href="#i-close"/></svg></button>
         ${badge}
         <div class="title">${escapeHtml(book.title)}</div>
         <div class="author">${escapeHtml(book.fileName)}</div>
         <div class="progress"><div class="progress-fill" style="width:${pct}%"></div></div>
-        <div class="meta"><span>${pct}% 완료</span><span>${book.totalChunks}챕터</span></div>
+        <div class="meta"><span>${pct}%</span><span>${book.totalChunks} ch</span></div>
       </div>`;
     });
     
     grid.innerHTML = html;
     
-    // URL import — bind after element exists
+    // URL import + manual pick — bind after element exists
     $('url-load-btn')?.addEventListener('click', () => this.loadBookFromUrl());
     $('url-input')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') this.loadBookFromUrl(); });
+    $('upload-pick')?.addEventListener('click', () => $('file-input')?.click());
     
     this.updateQueueBadge();
   },
@@ -409,7 +479,9 @@ let App = {
     // Restore scroll position
     if (this.currentBook.currentOffset) {
       setTimeout(() => {
-        window.scrollTo({ top: this.currentBook.currentOffset, behavior: 'instant' });
+        const stage = document.querySelector('.stage');
+        if (stage) stage.scrollTop = this.currentBook.currentOffset;
+        else window.scrollTo({ top: this.currentBook.currentOffset, behavior: 'instant' });
       }, 50);
     }
   },
@@ -489,9 +561,9 @@ let App = {
     const atFirst = page <= 0 && this.currentSelectedChunkIndex <= 0;
     const atLast = page >= total - 1 && this.currentSelectedChunkIndex >= this.currentChunks.length - 1;
     return `
-      <button class="topbar-btn page-btn" data-page="prev"${atFirst ? ' disabled' : ''}>◀ 이전</button>
-      <span class="ch-label">${page + 1} / ${total} 쪽</span>
-      <button class="topbar-btn page-btn" data-page="next"${atLast ? ' disabled' : ''}>다음 ▶</button>`;
+      <button class="topbar-btn page-btn" data-page="prev"${atFirst ? ' disabled' : ''}><svg class="ico-svg" width="14" height="14"><use href="#i-chevron-left"/></svg><span>이전</span></button>
+      <span class="ch-label">${page + 1} / ${total}</span>
+      <button class="topbar-btn page-btn" data-page="next"${atLast ? ' disabled' : ''}><span>다음</span><svg class="ico-svg" width="14" height="14"><use href="#i-chevron-right"/></svg></button>`;
   },
 
   // Move within the chunk by page; at the edges, move to the adjacent chunk.
@@ -513,7 +585,7 @@ let App = {
     if (rt) rt.innerHTML = this.renderParagraphs();
     const nav = $('page-nav');
     if (nav) nav.innerHTML = this._renderPageNav();
-    window.scrollTo({ top: 0, behavior: 'instant' });
+    (document.querySelector('.stage') || window).scrollTo({ top: 0, behavior: 'instant' });
   },
 
   renderReader() {
@@ -536,23 +608,23 @@ let App = {
       <div id="chapter-warmup" class="chapter-warmup" hidden></div>
       <div id="chapter-summary" class="chapter-summary" hidden></div>
       <div class="expr-reco-bar">
-        <button class="topbar-btn" id="expr-reco-btn">💡 이 챕터에서 학습할 표현 추천</button>
+        <button class="topbar-btn" id="expr-reco-btn"><svg class="ico-svg" width="16" height="16"><use href="#i-sparkle"/></svg><span>이 챕터에서 학습할 표현 추천</span></button>
       </div>
       <div id="expr-reco" class="expr-reco" hidden></div>
       <div class="ch-nav">
-        <button class="topbar-btn ch-nav-btn" data-dir="prev"${prevDisabled ? ' disabled' : ''}>◀ 이전</button>
+        <button class="topbar-btn ch-nav-btn" data-dir="prev"${prevDisabled ? ' disabled' : ''}><svg class="ico-svg" width="16" height="16"><use href="#i-chevron-left"/></svg><span>이전</span></button>
         <span class="ch-label">${this.currentSelectedChunkIndex + 1} / ${this.currentChunks.length}</span>
-        <button class="topbar-btn ch-nav-btn" data-dir="next"${nextDisabled ? ' disabled' : ''}>다음 ▶</button>
+        <button class="topbar-btn ch-nav-btn" data-dir="next"${nextDisabled ? ' disabled' : ''}><span>다음</span><svg class="ico-svg" width="16" height="16"><use href="#i-chevron-right"/></svg></button>
       </div>
       <div class="mode-selector">
-        <button class="mode-btn${this.readerMode === 'story' ? ' active-mode' : ''}" data-mode="story">📖 읽기</button>
-        <button class="mode-btn${this.readerMode === 'tts' ? ' active-mode' : ''}" data-mode="tts">🔊 낭독</button>
+        <button class="mode-btn${this.readerMode === 'story' ? ' active-mode' : ''}" data-mode="story">읽기</button>
+        <button class="mode-btn${this.readerMode === 'tts' ? ' active-mode' : ''}" data-mode="tts">낭독</button>
       </div>
       <div id="tts-bar" class="tts-bar${ttsOpen ? ' open' : ''}">
-        <button class="topbar-btn" id="tts-play">▶️</button>
-        <button class="topbar-btn" id="tts-pause">⏸️</button>
-        <button class="topbar-btn" id="tts-stop">⏹️</button>
-        <span class="tts-label">속도:</span>
+        <button class="topbar-btn" id="tts-play" aria-label="재생"><svg class="ico-svg" width="14" height="14"><use href="#i-play"/></svg></button>
+        <button class="topbar-btn" id="tts-pause" aria-label="일시정지"><svg class="ico-svg" width="14" height="14"><use href="#i-pause"/></svg></button>
+        <button class="topbar-btn" id="tts-stop" aria-label="정지"><svg class="ico-svg" width="14" height="14"><use href="#i-stop"/></svg></button>
+        <span class="tts-label">속도</span>
         <input type="range" id="tts-rate" min="0.3" max="2.0" step="0.1" value="${TTS._rate}">
         <span id="tts-rate-val" class="tts-val">${TTS._rate}x</span>
       </div>
@@ -641,7 +713,7 @@ let App = {
       this.renderReader();
       this.loadChapterSummary();
       this.loadWarmup();
-      window.scrollTo({ top: 0, behavior: 'instant' });
+      (document.querySelector('.stage') || window).scrollTo({ top: 0, behavior: 'instant' });
       this._savePageProgress();
     });
     
@@ -702,18 +774,18 @@ let App = {
       <div class="qm-sentence">${escapeHtml(text)}</div>
       <div class="qm-words-wrap">${wordHtml}</div>
       <div class="qm-actions">
-        <button class="qm-btn word" data-action="word">📖 단어 힌트</button>
-        <button class="qm-btn phrase" data-action="phraseMode">🔗 구 저장</button>
-        <button class="qm-btn grammar" data-action="grammar">🔍 구문 힌트</button>
-        <button class="qm-btn structure" data-action="structure">🏷️ 구조 분석</button>
-        <button class="qm-btn kgram" data-action="koreanGrammar">🇰🇷 한국인 포인트</button>
-        <button class="qm-btn chunk" data-action="chunkReading">✂️ 끊어 읽기</button>
-        <button class="qm-btn easy" data-action="easyEnglish">🟢 쉬운 영어</button>
-        <button class="qm-btn gist" data-action="gist">📋 문장 요지</button>
-        <button class="qm-btn ask" data-action="ask">💬 자유 질문</button>
-        <button class="qm-btn study" data-action="study">✍️ 해석해보기</button>
-        <button class="qm-btn highlight" data-action="highlight">⭐ 하이라이트</button>
-        <button class="qm-btn queue" data-action="queue">⏰ 나중에</button>
+        <button class="qm-btn word" data-action="word">단어 힌트</button>
+        <button class="qm-btn phrase" data-action="phraseMode">구 저장</button>
+        <button class="qm-btn grammar" data-action="grammar">구문 힌트</button>
+        <button class="qm-btn structure" data-action="structure">구조 분석</button>
+        <button class="qm-btn kgram" data-action="koreanGrammar">한국인 포인트</button>
+        <button class="qm-btn chunk" data-action="chunkReading">끊어 읽기</button>
+        <button class="qm-btn easy" data-action="easyEnglish">쉬운 영어</button>
+        <button class="qm-btn gist" data-action="gist">문장 요지</button>
+        <button class="qm-btn ask" data-action="ask">자유 질문</button>
+        <button class="qm-btn study" data-action="study">해석해보기</button>
+        <button class="qm-btn highlight" data-action="highlight">하이라이트</button>
+        <button class="qm-btn queue" data-action="queue">나중에</button>
       </div>
       <div id="hint-result" class="qm-hint-result"></div>
     `;
@@ -721,7 +793,7 @@ let App = {
     menu.classList.add('open');
 
     // 모바일: 좌표 계산을 건너뛰고 CSS의 하단 고정(바텀시트) 배치를 따른다.
-    if (window.matchMedia('(max-width:768px)').matches) {
+    if (window.matchMedia('(max-width:1023px)').matches) {
       menu.style.left = '';
       menu.style.right = '';
       menu.style.top = '';
@@ -1144,7 +1216,7 @@ let App = {
     $('study-feedback').classList.remove('open');
     $('study-compare').classList.remove('open');
     $('study-submit').disabled = false;
-    $('study-submit').textContent = '✍️ 해석 제출';
+    $('study-submit').innerHTML = '<svg class="ico-svg" width="16" height="16"><use href="#i-check"/></svg><span>해석 제출</span>';
     $('study-buddy').innerHTML = '';
     
     // Scroll to top of panel
@@ -1167,7 +1239,7 @@ let App = {
     if (!text) return;
     
     $('study-submit').disabled = true;
-    $('study-submit').textContent = '분석 중...';
+    $('study-submit').innerHTML = '<span>분석 중...</span>';
     
     const data = await AI.feedback(this.selectedSentence.text, text, this.feedbackAttempts);
     
@@ -1212,7 +1284,7 @@ let App = {
       input.value = '';
       input.placeholder = '피드백을 반영해서 다시 해석해보세요...';
       $('study-submit').disabled = false;
-      $('study-submit').textContent = '🔄 다시 제출';
+      $('study-submit').innerHTML = '<svg class="ico-svg" width="16" height="16"><use href="#i-review"/></svg><span>다시 제출</span>';
       
     } else {
       // One-point feedback (H1: escapeHtml applied)
@@ -1235,7 +1307,7 @@ let App = {
       input.value = '';
       input.placeholder = '피드백을 반영해서 다시 해석해보세요...';
       $('study-submit').disabled = false;
-      $('study-submit').textContent = '🔄 다시 제출';
+      $('study-submit').innerHTML = '<svg class="ico-svg" width="16" height="16"><use href="#i-review"/></svg><span>다시 제출</span>';
     }
   },
 
@@ -1294,7 +1366,7 @@ let App = {
       ${note ? `<div class="cv-note">💡 ${escapeHtml(note)}</div>` : ''}
     `;
 
-    $('study-submit').textContent = '✅ 완료';
+    $('study-submit').innerHTML = '<svg class="ico-svg" width="16" height="16"><use href="#i-check"/></svg><span>완료</span>';
     $('study-submit').disabled = true;
 
     await saveFeedbackSession(
@@ -1367,7 +1439,7 @@ let App = {
   // H3: User chooses to continue
   _continueStudy() {
     $('study-submit').disabled = false;
-    $('study-submit').textContent = '🔄 다시 제출';
+    $('study-submit').innerHTML = '<svg class="ico-svg" width="16" height="16"><use href="#i-review"/></svg><span>다시 제출</span>';
     $('study-user-input').focus();
   },
 
@@ -1564,7 +1636,11 @@ let App = {
     if (!list) return;
     const items = await getHighlights();
     if (!items.length) {
-      list.innerHTML = '<div class="review-empty"><div class="icon">⭐</div>아직 하이라이트가 없습니다.<br>문장을 누르고 ⭐ 하이라이트로 마음에 드는 문장을 저장하세요.</div>';
+      list.innerHTML = `<div class="empty-state">
+        <svg class="empty-illo tinted" viewBox="0 0 120 80"><use href="#illo-quill"/></svg>
+        <div class="empty-title">마음에 새길 문장이 없어요</div>
+        <div class="empty-body">읽다 멈추게 되는 문장을 골라 하이라이트로 저장하세요. 여기 한 자리에 모입니다.</div>
+      </div>`;
       return;
     }
     list.innerHTML = items.map(h => `
@@ -1587,7 +1663,11 @@ let App = {
     list.innerHTML = '';
     
     if (!items.length) {
-      list.innerHTML = '<div class="review-empty"><div class="icon">📭</div>저장된 문장이 없습니다.<br>읽기 중 어려운 문장을 ⏰ 나중에 공부에 저장해보세요.</div>';
+      list.innerHTML = `<div class="empty-state">
+        <svg class="empty-illo tinted" viewBox="0 0 120 80"><use href="#illo-letter"/></svg>
+        <div class="empty-title">미뤄둔 문장이 없어요</div>
+        <div class="empty-body">읽다가 다시 와서 보고 싶은 문장은 "나중에"로 저장해두세요. 시간 날 때 차분히 들여다볼 수 있어요.</div>
+      </div>`;
       return;
     }
     
@@ -1657,6 +1737,11 @@ let App = {
       badge.textContent = due > 0 ? due : '';
       badge.style.display = due > 0 ? 'inline' : 'none';
     }
+    const tabBadge = $('tab-review-badge');
+    if (tabBadge) {
+      tabBadge.textContent = due > 0 ? (due > 99 ? '99+' : due) : '';
+      tabBadge.classList.toggle('show', due > 0);
+    }
   },
 
   // 복습이 많이 밀렸으면 책을 열 때 한 번만 "복습 먼저" 넛지를 띄운다.
@@ -1676,7 +1761,11 @@ let App = {
     grid.innerHTML = '';
     
     if (!words.length) {
-      grid.innerHTML = '<div class="review-empty" style="grid-column:1/-1"><div class="icon">📖</div>아직 저장된 단어가 없습니다.<br>읽기 중 모르는 단어를 단어장에 저장해보세요.</div>';
+      grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1">
+        <svg class="empty-illo tinted" viewBox="0 0 120 80"><use href="#illo-spread"/></svg>
+        <div class="empty-title">단어장이 비어 있어요</div>
+        <div class="empty-body">읽다 만난 모르는 단어를 한 번 톡 — 자동으로 카드가 만들어지고 복습 일정이 잡힙니다.</div>
+      </div>`;
       return;
     }
     
@@ -1691,7 +1780,7 @@ let App = {
             <span>
               <span class="v-status ${w.status}">${statusLabel(w.status)}</span>
             </span>
-            <span>${w.reviewBox > 0 ? '📅 복습: ' + (w.nextReview ? new Date(w.nextReview).toLocaleDateString() : '-') : '🆕 신규'}</span>
+            <span>${w.reviewBox > 0 ? '복습 ' + (w.nextReview ? new Date(w.nextReview).toLocaleDateString() : '-') : '신규'}</span>
           </div>
         </div>`;
     });
@@ -1848,34 +1937,56 @@ let App = {
   /* ===== Settings ===== */
   async loadSettings() {
     const s = await getSettings();
+    const pinned = s.aiPinDefaults !== false;
     $('settings-url').value = s.aiBaseUrl || '/api/zen/go/v1';
     $('settings-model').value = s.aiModel || 'deepseek-v4-flash';
     $('settings-key').value = '';
-    $('settings-key-mode').value = s.apiKeyStorageMode || 'session';
+    $('settings-key-mode').value = s.apiKeyStorageMode || s.aiKeyMode || 'persist';
     $('settings-tts-rate').value = s.ttsRate || 0.9;
     $('settings-tts-val').textContent = s.ttsRate + 'x';
     $('settings-fontsize').value = s.fontSize || 16;
     $('settings-fs-val').textContent = s.fontSize + 'px';
     $('settings-card-cap').value = s.dailyCardCap ?? 5;
+    const pinEl = $('settings-pin-defaults');
+    if (pinEl) {
+      pinEl.checked = pinned;
+      $('settings-url').disabled = pinned;
+      $('settings-model').disabled = pinned;
+      pinEl.onchange = () => {
+        const on = pinEl.checked;
+        $('settings-url').disabled = on;
+        $('settings-model').disabled = on;
+      };
+    }
   },
 
   async saveSettings() {
+    const pinned = $('settings-pin-defaults')?.checked ?? true;
+    const isLocal = ['localhost', '127.0.0.1'].includes(location.hostname);
+    const defaultUrl = isLocal ? '/api/zen/go/v1' : 'https://api.deepseek.com';
+    const defaultModel = 'deepseek-v4-flash';
     const s = {
-      aiBaseUrl: $('settings-url').value.trim(),
-      aiModel: $('settings-model').value.trim(),
+      aiBaseUrl: pinned ? defaultUrl : $('settings-url').value.trim(),
+      aiModel: pinned ? defaultModel : $('settings-model').value.trim(),
       aiKey: $('settings-key').value.trim(),
       apiKeyStorageMode: $('settings-key-mode').value,
+      aiKeyMode: $('settings-key-mode').value,
+      aiPinDefaults: pinned,
       ttsRate: parseFloat($('settings-tts-rate').value),
       fontSize: parseInt($('settings-fontsize').value),
       dailyCardCap: parseInt($('settings-card-cap').value) || 0,
       theme: 'dark', lineHeight: 1.9
     };
-    
-    AI.setKey(s.aiKey, s.apiKeyStorageMode);
+
+    if (s.aiKey) AI.setKey(s.aiKey, s.apiKeyStorageMode);
     AI.setBaseUrl(s.aiBaseUrl);
     AI.setModel(s.aiModel);
 
     await saveSettings(s);
+    if (pinned) {
+      $('settings-url').value = defaultUrl;
+      $('settings-model').value = defaultModel;
+    }
     this.showToast('설정이 저장되었습니다!', 'success');
   },
 
@@ -1912,7 +2023,11 @@ let App = {
     list.innerHTML = '';
     
     if (!sessions.length) {
-      list.innerHTML = '<div class="review-empty"><div class="icon">📝</div>아직 피드백 기록이 없습니다.<br>Study Mode에서 해석을 제출해보세요.</div>';
+      list.innerHTML = `<div class="empty-state">
+        <svg class="empty-illo tinted" viewBox="0 0 120 80"><use href="#illo-letter"/></svg>
+        <div class="empty-title">아직 피드백이 없어요</div>
+        <div class="empty-body">해석 훈련에서 한국어 해석을 제출하면, AI가 미세한 차이까지 짚어 코멘트해 줍니다.</div>
+      </div>`;
       return;
     }
     
@@ -1935,7 +2050,11 @@ let App = {
     const s = await getDependencyStats();
 
     if (s.all.sessions === 0) {
-      body.innerHTML = '<div class="review-empty"><div class="icon">📊</div>아직 읽기 기록이 없습니다.<br>책을 읽으면 도움 의존도가 여기에 쌓입니다.</div>';
+      body.innerHTML = `<div class="empty-state">
+        <svg class="empty-illo tinted" viewBox="0 0 120 80"><use href="#illo-chart"/></svg>
+        <div class="empty-title">아직 데이터가 없어요</div>
+        <div class="empty-body">책을 읽기 시작하면 도움 의존도와 독립 독해량이 자동으로 누적됩니다.</div>
+      </div>`;
       return;
     }
 
@@ -2185,7 +2304,11 @@ let App = {
     this._lastActivityCount = await getActivityCount();
 
     if (!p.hasData) {
-      body.innerHTML = `<div class="review-empty"><div class="icon">🎯</div>아직 진단할 학습 기록이 충분하지 않아요.<br>책을 읽고, 단어를 모으고, 해석·구조 분석을 해보면<br>여기서 영어 실력과 약점을 분석해 드려요.</div>`;
+      body.innerHTML = `<div class="empty-state">
+        <svg class="empty-illo tinted" viewBox="0 0 120 80"><use href="#illo-target"/></svg>
+        <div class="empty-title">진단할 데이터가 모이는 중</div>
+        <div class="empty-body">책을 읽고, 단어를 모으고, 해석·구조 분석을 몇 번 해보세요. 학습 신호가 충분히 쌓이면 영역별 실력 지도를 그려 드려요.</div>
+      </div>`;
       return;
     }
 
@@ -2429,7 +2552,7 @@ function escapeHtml(s) {
 }
 
 function statusLabel(s) {
-  return { 'new': '🆕 새 단어', 'learning': '📖 학습중', 'known': '✅ 알고 있음' }[s] || s;
+  return { 'new': '새 단어', 'learning': '학습중', 'known': '알아요' }[s] || s;
 }
 
 /* ===== Init on DOM Ready ===== */

@@ -425,6 +425,12 @@ async function getFeedbackHistory(bookId) {
 }
 
 /* ===== Settings (with extended defaults for C5 restore) ===== */
+// Fixed defaults: DeepSeek official API. User only needs to enter their key.
+const DEFAULT_AI_URL_REMOTE = 'https://api.deepseek.com';
+const DEFAULT_AI_MODEL_REMOTE = 'deepseek-v4-flash';
+const DEFAULT_AI_URL_LOCAL = '/api/zen/go/v1';
+const DEFAULT_AI_MODEL_LOCAL = 'deepseek-v4-flash';
+
 async function getSettings() {
   const isLocal = ['localhost', '127.0.0.1'].includes(location.hostname);
   let s = await DB.settings.get(1);
@@ -433,30 +439,26 @@ async function getSettings() {
       id: 1, theme: 'dark', fontSize: 16, lineHeight: 1.9,
       ttsRate: 0.9, ttsVoice: '',
       aiProvider: '',
-      aiBaseUrl: isLocal ? '/api/zen/go/v1' : 'https://api.openai.com/v1',
-      aiModel: isLocal ? 'deepseek-v4-flash' : 'gpt-4o-mini',
-      aiKey: '', aiKeyMode: 'session',
-      apiKeyStorageMode: 'session',
+      aiBaseUrl: isLocal ? DEFAULT_AI_URL_LOCAL : DEFAULT_AI_URL_REMOTE,
+      aiModel: isLocal ? DEFAULT_AI_MODEL_LOCAL : DEFAULT_AI_MODEL_REMOTE,
+      aiKey: '', aiKeyMode: 'persist',
+      apiKeyStorageMode: 'persist',
+      aiPinDefaults: true,
       dailyCardCap: 5,
       lastOpenedBookId: null, lastView: 'bookshelf'
     };
     await DB.settings.put(s);
-  } else if (
-    isLocal &&
-    s.aiBaseUrl === 'https://api.openai.com/v1' && s.aiModel === 'gpt-4o-mini'
-  ) {
-    // Only on the local proxy host: migrate untouched legacy defaults to the
-    // proxied opencode setup. On static hosting the OpenAI default is correct.
-    s.aiBaseUrl = '/api/zen/go/v1';
-    s.aiModel = 'deepseek-v4-flash';
-    await DB.settings.put(s);
-  } else if (!isLocal && s.aiBaseUrl?.startsWith('/')) {
-    // Static hosting has no same-origin proxy, so a stored relative path would
-    // always fail. Reset to the OpenAI-compatible default (user then sets their
-    // own key, or a Cloudflare Worker URL — see cloudflare-worker/).
-    s.aiBaseUrl = 'https://api.openai.com/v1';
-    s.aiModel = 'gpt-4o-mini';
-    await DB.settings.put(s);
+  } else if (s.aiPinDefaults !== false) {
+    // Pinned defaults — keep URL/model locked to the latest baseline,
+    // regardless of legacy values. User's key is preserved.
+    const targetUrl = isLocal ? DEFAULT_AI_URL_LOCAL : DEFAULT_AI_URL_REMOTE;
+    const targetModel = isLocal ? DEFAULT_AI_MODEL_LOCAL : DEFAULT_AI_MODEL_REMOTE;
+    if (s.aiBaseUrl !== targetUrl || s.aiModel !== targetModel) {
+      s.aiBaseUrl = targetUrl;
+      s.aiModel = targetModel;
+      await DB.settings.put(s);
+    }
+    if (!s.aiKeyMode) s.aiKeyMode = 'persist';
   }
   return s;
 }

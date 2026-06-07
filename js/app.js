@@ -1937,34 +1937,56 @@ let App = {
   /* ===== Settings ===== */
   async loadSettings() {
     const s = await getSettings();
+    const pinned = s.aiPinDefaults !== false;
     $('settings-url').value = s.aiBaseUrl || '/api/zen/go/v1';
     $('settings-model').value = s.aiModel || 'deepseek-v4-flash';
     $('settings-key').value = '';
-    $('settings-key-mode').value = s.apiKeyStorageMode || 'session';
+    $('settings-key-mode').value = s.apiKeyStorageMode || s.aiKeyMode || 'persist';
     $('settings-tts-rate').value = s.ttsRate || 0.9;
     $('settings-tts-val').textContent = s.ttsRate + 'x';
     $('settings-fontsize').value = s.fontSize || 16;
     $('settings-fs-val').textContent = s.fontSize + 'px';
     $('settings-card-cap').value = s.dailyCardCap ?? 5;
+    const pinEl = $('settings-pin-defaults');
+    if (pinEl) {
+      pinEl.checked = pinned;
+      $('settings-url').disabled = pinned;
+      $('settings-model').disabled = pinned;
+      pinEl.onchange = () => {
+        const on = pinEl.checked;
+        $('settings-url').disabled = on;
+        $('settings-model').disabled = on;
+      };
+    }
   },
 
   async saveSettings() {
+    const pinned = $('settings-pin-defaults')?.checked ?? true;
+    const isLocal = ['localhost', '127.0.0.1'].includes(location.hostname);
+    const defaultUrl = isLocal ? '/api/zen/go/v1' : 'https://api.deepseek.com';
+    const defaultModel = 'deepseek-v4-flash';
     const s = {
-      aiBaseUrl: $('settings-url').value.trim(),
-      aiModel: $('settings-model').value.trim(),
+      aiBaseUrl: pinned ? defaultUrl : $('settings-url').value.trim(),
+      aiModel: pinned ? defaultModel : $('settings-model').value.trim(),
       aiKey: $('settings-key').value.trim(),
       apiKeyStorageMode: $('settings-key-mode').value,
+      aiKeyMode: $('settings-key-mode').value,
+      aiPinDefaults: pinned,
       ttsRate: parseFloat($('settings-tts-rate').value),
       fontSize: parseInt($('settings-fontsize').value),
       dailyCardCap: parseInt($('settings-card-cap').value) || 0,
       theme: 'dark', lineHeight: 1.9
     };
-    
-    AI.setKey(s.aiKey, s.apiKeyStorageMode);
+
+    if (s.aiKey) AI.setKey(s.aiKey, s.apiKeyStorageMode);
     AI.setBaseUrl(s.aiBaseUrl);
     AI.setModel(s.aiModel);
 
     await saveSettings(s);
+    if (pinned) {
+      $('settings-url').value = defaultUrl;
+      $('settings-model').value = defaultModel;
+    }
     this.showToast('설정이 저장되었습니다!', 'success');
   },
 

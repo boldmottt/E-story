@@ -5,8 +5,8 @@
 // (e.g. GitHub Pages) the relative path 404s, so default to DeepSeek's
 // official OpenAI-compatible API that the user configures with their own key.
 const AI_IS_LOCAL = ['localhost', '127.0.0.1'].includes(location.hostname);
-const AI_DEFAULT_URL = AI_IS_LOCAL ? '/api/zen/go/v1' : 'https://api.deepseek.com/v1';
-const AI_DEFAULT_MODEL = AI_IS_LOCAL ? 'deepseek-v4-flash' : 'deepseek-chat';
+const AI_DEFAULT_URL = AI_IS_LOCAL ? '/api/zen/go/v1' : 'https://api.deepseek.com';
+const AI_DEFAULT_MODEL = 'deepseek-v4-flash';
 
 const AI = {
   _key: '',

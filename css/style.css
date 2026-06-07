@@ -1768,3 +1768,8 @@ svg use{pointer-events:none}
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}
 }
+
+/* ===== Settings: pin-defaults toggle + disabled inputs ===== */
+.toggle-row{display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--tx-2,#9aa0a6)}
+.toggle-row input[type="checkbox"]{width:16px;height:16px;accent-color:var(--a0,#C9A961);cursor:pointer}
+.settings-row input:disabled{opacity:.55;cursor:not-allowed;background:rgba(255,255,255,.02)}

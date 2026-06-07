@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,500;0,7..72,600;0,7..72,700;1,7..72,400;1,7..72,500&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=2.0">
+<link rel="stylesheet" href="css/style.css?v=2.1">
 </head>
 <body>
 
@@ -287,11 +287,11 @@
       </div>
       <div class="settings-row">
         <label>API URL</label>
-        <input type="text" id="settings-url" placeholder="https://api.deepseek.com/v1">
+        <input type="text" id="settings-url" placeholder="https://api.deepseek.com">
       </div>
       <div class="settings-row">
         <label>모델</label>
-        <input type="text" id="settings-model" placeholder="deepseek-chat">
+        <input type="text" id="settings-model" placeholder="deepseek-v4-flash">
       </div>
       <div class="settings-row">
         <label>API Key</label>
@@ -300,11 +300,15 @@
       <div class="settings-row">
         <label>키 저장 방식</label>
         <select id="settings-key-mode">
-          <option value="session">세션 전용 (안전)</option>
-          <option value="persist">브라우저에 저장</option>
+          <option value="persist">브라우저에 저장 (권장)</option>
+          <option value="session">세션 전용</option>
         </select>
       </div>
-      <div class="settings-note"><b>기본값</b>: <code>https://api.deepseek.com/v1</code> + 모델 <code>deepseek-chat</code> — <a href="https://platform.deepseek.com" target="_blank">DeepSeek 콘솔</a>에서 API 키를 발급받아 입력하세요.<br><b>로컬(serve.py)</b>: <code>/api/zen/go/v1</code>로 자동 전환, 키 입력 불필요.<br><b>Cloudflare Worker 프록시</b>: <code>cloudflare-worker/</code> 참고. 키 없고 프록시도 없으면 데모 모드.</div>
+      <div class="settings-row">
+        <label>기본값 고정</label>
+        <label class="toggle-row"><input type="checkbox" id="settings-pin-defaults"> <span>URL · 모델을 항상 기본값으로 유지</span></label>
+      </div>
+      <div class="settings-note"><b>고정 기본값</b>: URL <code>https://api.deepseek.com</code> · 모델 <code>deepseek-v4-flash</code>. <a href="https://platform.deepseek.com" target="_blank">DeepSeek 콘솔</a>에서 키를 발급받아 입력하면 끝.<br><b>고정 해제</b> 시 직접 입력값으로 동작. 로컬(serve.py)에서는 <code>/api/zen/go/v1</code>로 자동 전환되어 키 불필요.</div>
     </div>
 
     <div class="settings-group">
@@ -475,12 +479,12 @@
 </div>
 
 <!-- ===== Scripts ===== -->
-<script src="vendor/dexie.js?v=2.0"></script>
-<script src="js/db.js?v=2.0"></script>
-<script src="js/ai.js?v=2.0"></script>
-<script src="js/tts.js?v=2.0"></script>
-<script src="js/sync.js?v=2.0"></script>
-<script src="js/app.js?v=2.0"></script>
+<script src="vendor/dexie.js?v=2.1"></script>
+<script src="js/db.js?v=2.1"></script>
+<script src="js/ai.js?v=2.1"></script>
+<script src="js/tts.js?v=2.1"></script>
+<script src="js/sync.js?v=2.1"></script>
+<script src="js/app.js?v=2.1"></script>
 
 </body>
 </html>

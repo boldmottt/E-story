@@ -2246,37 +2246,9 @@ let App = {
         detail: `해석 시도 ${ti.total}회 · 지적 ${ti.scored}회` });
     }
 
-    // 4) 독해 독립도 — 1000단어당 도움 사용 횟수(낮을수록 좋음).
-    // 산식 100-rate*2.5는 임의의 선형이라 향후 사용자 분포로 보정 필요.
-    // 단어 수가 적으면 신뢰도 낮음으로 라벨.
-    const d = sig.dependency.all;
-    if (d.sessions < 2 || d.words < 500) {
-      skills.push({ key: 'independence', label: '독해 독립도', icon: '🧭', score: null, sample: d.words, note: '500단어 이상 읽으면 평가돼요.' });
-    } else {
-      const score = clamp(100 - d.rate * 2.5);
-      const conf = this._confidence(d.words, 2000, 8000);
-      const weak = (conf.level !== 'low' && d.rate >= 25) ? `1000단어당 도움 ${d.rate}회로 의존도가 높아요.` : null;
-      skills.push({ key: 'independence', label: '독해 독립도', icon: '🧭', score, sample: d.words, conf, weak,
-        detail: `읽은 단어 ${d.words.toLocaleString()} · 도움률 ${d.rate}/1000` });
-    }
-
-    // 5) 읽기 속도 — 보조 신호. wpm 정규화 (wpm-40)/160 도 임의의 상수.
-    // getReadingSpeed()는 ≥300단어 충족 시에만 값을 돌려주므로 표본 보장은 그쪽에서 함.
-    const wpm = sig.speed;
-    if (wpm == null) {
-      skills.push({ key: 'speed', label: '읽기 속도', icon: '⚡', score: null, sample: 0, note: '충분히 읽으면 속도가 추정돼요.' });
-    } else {
-      const score = clamp(((wpm - 40) / (200 - 40)) * 100);
-      // 충분히 읽지 않은 평균값은 늘 medium 이하로 본다.
-      const conf = this._confidence(d.words || 0, 2000, 8000);
-      const weak = (conf.level !== 'low' && wpm < 90) ? `분당 ${wpm}단어로 다소 느린 편이에요.` : null;
-      skills.push({ key: 'speed', label: '읽기 속도', icon: '⚡', score, sample: 1, conf, weak, detail: `약 ${wpm} WPM` });
-    }
-
     const scored = skills.filter(s => s.score != null);
     const hasData = scored.length > 0;
-    // 신뢰도 가중치: low는 절반만 반영해 종합 점수가 표본 적은 영역에 끌려가지 않게.
-    const baseW = { vocab: 1, parse: 1, grammar: 1, independence: 1, speed: 0.5 };
+    const baseW = { vocab: 1, parse: 1, grammar: 1 };
     const confMul = { low: 0.5, medium: 0.85, high: 1 };
     let wsum = 0, wtot = 0;
     for (const s of scored) {
@@ -2284,8 +2256,7 @@ let App = {
       wsum += s.score * w; wtot += w;
     }
     const overallScore = wtot ? Math.round(wsum / wtot) : null;
-    // 약점 후보는 신뢰도 low를 제외한 영역(읽기 속도 제외)에서 고른다.
-    const core = scored.filter(s => s.key !== 'speed' && s.conf?.level !== 'low');
+    const core = scored.filter(s => s.conf?.level !== 'low');
     const weakest = core.length ? core.reduce((a, b) => (b.score < a.score ? b : a)) : null;
     const cefr = this._overallCefr(overallScore, sig.engagedCefr);
     const levelKo = this._levelLabel(overallScore);

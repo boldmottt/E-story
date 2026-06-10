@@ -219,12 +219,13 @@ let App = {
       this._pendingBookId = null;
     }
     
-    // Listen for AI events
-    window.addEventListener('ai:demo-fallback', (e) => {
-      this.showToast('⚠️ AI 연결 실패 (키 없음): ' + e.detail.message, 'error');
+    // Listen for AI events — dedupe identical errors within a window so a
+    // burst of parallel calls doesn't stack the same toast.
+    window.addEventListener('ai:demo-fallback', () => {
+      this._aiToastOnce('demo', 'AI 키가 설정되지 않아 데모 모드로 동작 중이에요. 설정에서 API 키를 입력해주세요.', 'info');
     });
     window.addEventListener('ai:error', (e) => {
-      this.showToast('⚠️ AI 오류: ' + e.detail.message, 'error');
+      this._aiToastOnce('error', 'AI 응답에 실패했어요. 잠시 후 다시 시도하거나 설정에서 연결을 확인해주세요.', 'error', e.detail?.message);
     });
     
     // Close quick menu on outside click
@@ -275,6 +276,11 @@ let App = {
   switchView(view) {
     // Leaving the reader ends the active reading session (dependency logging).
     if (this.currentView === 'reader' && view !== 'reader') this._endReadingSession();
+    // Floating surfaces belong to the view they were opened from.
+    if (view !== 'reader') {
+      $('study-panel')?.classList.remove('open');
+      this.closeQuickMenu();
+    }
     this.currentView = view;
     document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.view === view));
     document.querySelectorAll('.tab[data-view]').forEach(n => n.classList.toggle('active', n.dataset.view === view));
@@ -425,7 +431,7 @@ let App = {
     }
     input.value = url;
     
-    this.showToast('📥 책 다운로드 중...', 'info');
+    this.showToast('책 다운로드 중…', 'info');
     try {
       const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -436,7 +442,7 @@ let App = {
       const fileName = decodeURIComponent(url.split('/').pop() || 'book.txt');
       const file = new File([text], fileName, { type: 'text/plain' });
       const id = await addBook(file, text);
-      this.showToast(`✅ "${fileName}" 추가 완료!`, 'success');
+      this.showToast(`"${fileName}" 추가 완료!`, 'success');
       input.value = '';
       await this.loadBookshelf();
       Sync.scheduleSync();
@@ -448,7 +454,7 @@ let App = {
       if (e.message.includes('Failed to fetch') || e.name === 'TypeError') {
         msg = '이 URL은 브라우저 보안 정책(CORS)으로 직접 받을 수 없거나 서버가 꺼져 있습니다. 파일을 PC에 내려받아 업로드하거나, 로컬 서버(맥: python3 serve.py)를 사용해주세요.';
       }
-      this.showToast('❌ 불러오기 실패: ' + msg, 'error');
+      this.showToast('불러오기 실패: ' + msg, 'error');
     }
   },
 
@@ -849,7 +855,7 @@ let App = {
     result.innerHTML = `
       <div class="qm-phrase-hint">단어를 순서대로 눌러 표현을 만드세요.</div>
       <div class="qm-phrase-preview" id="qm-phrase-preview">—</div>
-      <button class="qm-phrase-save" disabled>🔗 이 표현 저장</button>
+      <button class="qm-phrase-save" disabled>이 표현 저장</button>
     `;
   },
 
@@ -881,13 +887,13 @@ let App = {
     const r = await addWord(phrase, meaning, this.selectedSentence.text, this.currentBook?.id, this.selectedSentence?.index, '');
     if (r && r.blocked) {
       this.showToast(`오늘 새 카드 한도(${r.cap}개)에 도달했어요. 내일 다시 추가할 수 있어요.`, 'info');
-      if (btn) { btn.textContent = '🔗 이 표현 저장'; btn.disabled = false; }
+      if (btn) { btn.textContent = '이 표현 저장'; btn.disabled = false; }
       return;
     }
     this.showToast(`"${phrase}" 표현 저장됨!`, 'success');
     this.updateQueueBadge();
     Sync.scheduleSync();
-    if (btn) btn.textContent = '✅ 저장됨';
+    if (btn) btn.textContent = '저장됨';
   },
 
   closeQuickMenu() {
@@ -906,9 +912,13 @@ let App = {
     result.textContent = '단어 뜻 불러오는 중...';
     this._logHelp('dictionaryClicks');
     const hint = await AI.wordHint(word, this.selectedSentence.text);
+    if (hint.error) {
+      result.textContent = '뜻을 불러오지 못했어요. 잠시 후 다시 시도해주세요.';
+      return;
+    }
     const meaning = hint.meaningKo || '';
-    result.innerHTML = `<b>${escapeHtml(word)}</b>: ${escapeHtml(meaning || '데이터를 불러오는 중입니다')} <span style="color:var(--tx3)">(${escapeHtml(hint.partOfSpeech || '')})</span>`
-      + ` <button class="qm-vocab-add" data-word="${escapeHtml(word)}" data-meaning="${escapeHtml(meaning)}">➕ 단어장</button>`;
+    result.innerHTML = `<b>${escapeHtml(word)}</b>: ${escapeHtml(meaning)} <span style="color:var(--tx3)">(${escapeHtml(hint.partOfSpeech || '')})</span>`
+      + ` <button class="qm-vocab-add" data-word="${escapeHtml(word)}" data-meaning="${escapeHtml(meaning)}">+ 단어장</button>`;
   },
 
   async saveWordDirect(word, meaning) {
@@ -928,7 +938,7 @@ let App = {
     this._logHelp('helpStepsUsed');
     const data = await AI.grammarHint(this.selectedSentence.text);
     if (data.error) {
-      result.textContent = '⚠️ ' + (data.message || '분석 실패');
+      result.textContent = (data.message || '분석 실패');
       return;
     }
     result.innerHTML = `<b>문장 구조:</b> ${escapeHtml(data.structure)}<br><b>시제:</b> ${escapeHtml(data.tense)}`;
@@ -941,7 +951,7 @@ let App = {
     this._logHelp('translationClicks');
     const data = await AI.sentenceGist(this.selectedSentence.text);
     if (data.error) {
-      result.textContent = '⚠️ ' + (data.message || '요약 실패');
+      result.textContent = (data.message || '요약 실패');
       return;
     }
     result.textContent = `📋 ${data.gistKo}`;
@@ -957,7 +967,7 @@ let App = {
     }
     const data = await AI.easyEnglish(this.selectedSentence.text);
     if (data.error) {
-      result.textContent = '⚠️ ' + (data.message || '실패');
+      result.textContent = (data.message || '실패');
       return;
     }
     result.textContent = `🟢 ${data.easyEn}`;
@@ -971,7 +981,7 @@ let App = {
     this._logHelp('helpStepsUsed');
     const data = await AI.chunkReading(this.selectedSentence.text);
     if (data.error) {
-      result.textContent = '⚠️ ' + (data.message || '실패');
+      result.textContent = (data.message || '실패');
       return;
     }
     result.innerHTML = `<div class="chunk-list">` + data.groups.map(g =>
@@ -987,7 +997,7 @@ let App = {
     this._logHelp('helpStepsUsed');
     const data = await AI.koreanGrammar(this.selectedSentence.text);
     if (data.error) {
-      result.textContent = '⚠️ ' + (data.message || '실패');
+      result.textContent = (data.message || '실패');
       return;
     }
     result.innerHTML = data.points.map(p =>
@@ -1117,13 +1127,13 @@ let App = {
   async _gradeStructure(sentence, overlay) {
     const res = overlay.querySelector('#struct-result');
     const submitBtn = overlay.querySelector('#struct-submit');
-    res.innerHTML = '🔍 채점 중...';
+    res.innerHTML = '채점 중…';
     submitBtn.disabled = true;
 
     const data = await AI.analyzeStructure(sentence);
     submitBtn.disabled = false;
     if (!data || data.error || !Array.isArray(data.items)) {
-      res.innerHTML = '⚠️ 분석 실패 — 잠시 후 다시 시도해주세요.';
+      res.innerHTML = '분석 실패 — 잠시 후 다시 시도해주세요.';
       return;
     }
 
@@ -1209,7 +1219,7 @@ let App = {
     res.innerHTML = `
       <div class="struct-score">정답률 ${score}% <span class="struct-sub">(${hit}/${labeled})</span></div>
       <div class="struct-legend-row">${legend}</div>
-      ${data.note ? `<div class="struct-note">💡 ${escapeHtml(data.note)}</div>` : ''}
+      ${data.note ? `<div class="struct-note">${escapeHtml(data.note)}</div>` : ''}
       <div class="struct-review">${rowHtml}</div>`;
   },
 
@@ -1270,13 +1280,13 @@ let App = {
       const fb = $('study-feedback');
       fb.classList.add('open');
       fb.innerHTML = `
-        <div class="fb-label">💡 개선 포인트 (${this.feedbackAttempts.length + 1})</div>
+        <div class="fb-label">개선 포인트 (${this.feedbackAttempts.length + 1})</div>
         <div class="fb-text">${escapeHtml(data.feedbackKo || '좋은 해석이에요!')}</div>
         ${data.hintKo ? `<div class="fb-hint">💭 ${escapeHtml(data.hintKo)}</div>` : ''}
         ${data.l1InterferenceKo ? `<div class="fb-l1">🇰🇷 ${escapeHtml(data.l1InterferenceKo)}</div>` : ''}
         <div class="good-enough-actions" style="margin-top:12px;display:flex;gap:8px">
-          <button class="btn" onclick="App._finishStudy()">✅ 이 정도면 충분해요!</button>
-          <button class="btn-s" onclick="App._continueStudy()">🔄 한 번 더 다듬기</button>
+          <button class="btn" onclick="App._finishStudy()">이 정도면 충분해요!</button>
+          <button class="btn-s" onclick="App._continueStudy()">한 번 더 다듬기</button>
         </div>
       `;
       
@@ -1297,7 +1307,7 @@ let App = {
     } else {
       // One-point feedback (H1: escapeHtml applied)
       fb.innerHTML = `
-        <div class="fb-label">💡 개선 포인트 (${this.feedbackAttempts.length + 1})</div>
+        <div class="fb-label">개선 포인트 (${this.feedbackAttempts.length + 1})</div>
         <div class="fb-text">${escapeHtml(data.feedbackKo)}</div>
         ${data.hintKo ? `<div class="fb-hint">💭 ${escapeHtml(data.hintKo)}</div>` : ''}
         ${data.l1InterferenceKo ? `<div class="fb-l1">🇰🇷 ${escapeHtml(data.l1InterferenceKo)}</div>` : ''}
@@ -1346,7 +1356,7 @@ let App = {
   async _renderComparison(sentence, userText) {
     const cv = $('study-compare');
     cv.classList.add('open');
-    cv.innerHTML = '<div class="cv-label">📝 모델 해석 생성 중...</div>';
+    cv.innerHTML = '<div class="cv-label">모델 해석 생성 중…</div>';
 
     const mt = await AI.modelTranslations(sentence);
     const ok = mt && !mt.error;
@@ -1371,7 +1381,7 @@ let App = {
           <div class="cv-text">${escapeHtml(natural || '—')}</div>
         </div>
       </div>
-      ${note ? `<div class="cv-note">💡 ${escapeHtml(note)}</div>` : ''}
+      ${note ? `<div class="cv-note">${escapeHtml(note)}</div>` : ''}
     `;
 
     $('study-submit').innerHTML = '<svg class="ico-svg" width="16" height="16"><use href="#i-check"/></svg><span>완료</span>';
@@ -1433,14 +1443,14 @@ let App = {
     const data = await AI.correctOutput(text, this.selectedSentence?.text || '');
     if (btn) btn.disabled = false;
     if (!data || data.error) {
-      out.textContent = '⚠️ 교정을 불러올 수 없습니다.';
+      out.textContent = '교정을 불러올 수 없습니다.';
       return;
     }
     const notes = Array.isArray(data.notesKo) ? data.notesKo : [];
     out.innerHTML = `
       ${data.correctedEn ? `<div class="op-corrected"><span class="op-tag">교정</span> ${escapeHtml(data.correctedEn)}</div>` : ''}
       ${notes.length ? `<ul class="op-notes">${notes.map(n => `<li>${escapeHtml(n)}</li>`).join('')}</ul>` : ''}
-      ${data.usedTargetExpression ? `<div class="op-bonus">🎯 배운 표현을 활용했어요!</div>` : ''}
+      ${data.usedTargetExpression ? `<div class="op-bonus">배운 표현을 활용했어요!</div>` : ''}
     `;
   },
 
@@ -1474,18 +1484,18 @@ let App = {
     const text = this.currentChunk?.content || '';
     if (!text || text.length < 50) { csDiv.hidden = true; return; }
     csDiv.hidden = false;
-    csDiv.innerHTML = '🔄 요약 불러오는 중...';
+    csDiv.innerHTML = '<span class="cs-loading">요약 불러오는 중…</span>';
     const result = await AI.chapterSummary(text);
     if (result && !result.error && result.summary3lines) {
-      let html = `<div class="cs-summary">📝 ${escapeHtml(result.summary3lines)}</div>`;
+      let html = `<div class="cs-summary">${escapeHtml(result.summary3lines)}</div>`;
       if (result.characters?.length) {
-        html += `<div class="cs-characters">👤 <b>인물:</b> ${result.characters.map(c => escapeHtml(c)).join(', ')}</div>`;
+        html += `<div class="cs-characters"><b>인물</b> ${result.characters.map(c => escapeHtml(c)).join(', ')}</div>`;
       }
       if (result.keyScenes?.length) {
-        html += `<div class="cs-scenes">🎬 <b>장면:</b> ${result.keyScenes.map(s => escapeHtml(s)).join(', ')}</div>`;
+        html += `<div class="cs-scenes"><b>장면</b> ${result.keyScenes.map(s => escapeHtml(s)).join(', ')}</div>`;
       }
       if (result.expressions?.length) {
-        html += `<div class="cs-expr">💡 <b>표현:</b> ${result.expressions.map(e => escapeHtml(e)).join(', ')}</div>`;
+        html += `<div class="cs-expr"><b>표현</b> ${result.expressions.map(e => escapeHtml(e)).join(', ')}</div>`;
       }
       csDiv.innerHTML = html;
     } else {
@@ -1499,17 +1509,17 @@ let App = {
     const box = $('expr-reco');
     if (!box) return;
     box.hidden = false;
-    box.innerHTML = '🔄 학습할 표현 고르는 중...';
+    box.innerHTML = '학습할 표현 고르는 중…';
     const r = await AI.selectExpressions(this.currentChunk?.content || '');
     if (!r || r.error || !(r.items?.length)) {
       box.innerHTML = '<div class="er-empty">추천을 불러올 수 없어요. (설정에서 AI 키를 확인하세요)</div>';
       return;
     }
-    box.innerHTML = `<div class="er-title">💡 학습할 표현 추천</div>` + r.items.map(it => `
+    box.innerHTML = `<div class="er-title">학습할 표현 추천</div>` + r.items.map(it => `
       <div class="er-item">
         <div class="er-main"><span class="er-en">${escapeHtml(it.en || '')}</span> <span class="er-ko">${escapeHtml(it.ko || '')}</span></div>
         ${it.why ? `<div class="er-why">${escapeHtml(it.why)}</div>` : ''}
-        <button class="er-add" data-en="${escapeHtml(it.en || '')}" data-ko="${escapeHtml(it.ko || '')}">➕ 단어장</button>
+        <button class="er-add" data-en="${escapeHtml(it.en || '')}" data-ko="${escapeHtml(it.ko || '')}">+ 단어장</button>
       </div>`).join('');
   },
 
@@ -1521,7 +1531,7 @@ let App = {
       this.showToast(`오늘 새 카드 한도(${r.cap}개)에 도달했어요. 내일 다시 추가할 수 있어요.`, 'info');
       return;
     }
-    btn.textContent = '✅ 추가됨';
+    btn.textContent = '추가됨';
     btn.disabled = true;
     this.updateQueueBadge();
     Sync.scheduleSync();
@@ -1539,7 +1549,7 @@ let App = {
     if (this._warmupDismissed === `${this.currentBook?.id}:${idx}`) return;
     const prev = idx > 0 ? (this.currentChunks[idx - 1]?.content || '') : '';
     el.hidden = false;
-    el.innerHTML = '🔄 예열 불러오는 중...';
+    el.innerHTML = '예열 불러오는 중…';
     const r = await AI.warmup(prev, cur);
     if (!r || r.error || (!r.previouslyKo && !(r.expressions?.length))) {
       el.hidden = true;
@@ -1548,7 +1558,7 @@ let App = {
     const exprs = Array.isArray(r.expressions) ? r.expressions : [];
     el.innerHTML = `
       <button class="warmup-close" title="접기" aria-label="접기">✕</button>
-      <div class="warmup-title">🔥 읽기 전 예열</div>
+      <div class="warmup-title">읽기 전 예열</div>
       ${r.previouslyKo ? `<div class="warmup-prev"><b>지난 이야기</b> · ${escapeHtml(r.previouslyKo)}</div>` : ''}
       ${exprs.length ? `<div class="warmup-expr"><b>오늘의 표현</b><ul>${exprs.map(e => `<li><span class="we-en">${escapeHtml(e.en || '')}</span> <span class="we-ko">${escapeHtml(e.ko || '')}</span></li>`).join('')}</ul></div>` : ''}
     `;
@@ -1566,7 +1576,7 @@ let App = {
     const vocabBtn = document.createElement('div');
     vocabBtn.className = 'mt-16';
     vocabBtn.innerHTML = `
-      <button class="btn" onclick="App.saveWordFromSentence()">📝 단어장에 저장</button>
+      <button class="btn" onclick="App.saveWordFromSentence()">단어장에 저장</button>
     `;
     fb.appendChild(vocabBtn);
   },
@@ -1587,7 +1597,7 @@ let App = {
     overlay.id = 'vocab-select-modal';
     overlay.innerHTML = `
       <div class="modal">
-        <h2>📝 저장할 단어 선택</h2>
+        <h2>저장할 단어 선택</h2>
         <p class="vocab-select-desc">이 문장에서 단어장에 저장할 단어를 선택하세요:</p>
         <div class="vocab-select-list">
           ${words.map((w, i) => `<button class="vocab-select-word" data-word="${escapeHtml(w)}">${escapeHtml(w)}</button>`).join('')}
@@ -1635,7 +1645,7 @@ let App = {
     this.closeQuickMenu();
     if (!this.selectedSentence?.text) return;
     await addHighlight(this.currentBook?.id, this.selectedSentence.index, this.selectedSentence.text, this.currentBook?.title);
-    this.showToast('⭐ 하이라이트에 저장됨!', 'success');
+    this.showToast('하이라이트에 저장됨!', 'success');
     Sync.scheduleSync();
   },
 
@@ -1758,7 +1768,7 @@ let App = {
     this._reviewNudgeShown = true;
     const due = await countDueReviews();
     if (due >= 30) {
-      this.showToast(`📖 복습이 ${due}개 밀렸어요. 오늘은 새 카드보다 복습부터 해볼까요? (단어장 → 복습 시작)`, 'info');
+      this.showToast(`복습이 ${due}개 밀렸어요. 오늘은 새 카드보다 복습부터 해볼까요? (단어장 → 복습 시작)`, 'info');
     }
   },
 
@@ -1802,7 +1812,7 @@ let App = {
           <div class="v-word">${escapeHtml(w.word)}</div>
           <div class="v-meaning">${escapeHtml(w.meaningKo || '(뜻 추가 필요)')}</div>
           <div class="v-context">"${escapeHtml(w.contextSentence?.slice(0, 80) || '')}..."</div>
-          ${w.sceneNote ? `<div class="v-scene">🎬 ${escapeHtml(w.sceneNote)}</div>` : ''}
+          ${w.sceneNote ? `<div class="v-scene">${escapeHtml(w.sceneNote)}</div>` : ''}
           <div class="v-meta">
             <span>
               <span class="v-status ${w.status}">${statusLabel(w.status)}</span>
@@ -1865,7 +1875,7 @@ let App = {
     if (isProduction) {
       const cloze = word.contextSentence.replace(reExpr, '_____');
       front.innerHTML = `
-        <div class="rc-mode">✍️ 영어로 떠올리기</div>
+        <div class="rc-mode">영어로 떠올리기</div>
         <div class="rc-prompt">${escapeHtml(word.meaningKo)}</div>
         <div class="rc-cloze">"${escapeHtml(cloze)}"</div>
         <input id="rc-input" class="rc-input" placeholder="영어로 입력" autocomplete="off" autocapitalize="off" spellcheck="false">
@@ -1881,7 +1891,7 @@ let App = {
         const judge = $('rc-judge');
         if (input && judge) {
           const ok = input.value.trim().toLowerCase() === word.word.toLowerCase();
-          judge.textContent = ok ? '✅ 정답!' : (input.value.trim() ? '↩︎ 정답을 확인하세요' : '정답을 확인하세요');
+          judge.textContent = ok ? '정답!' : (input.value.trim() ? '↩︎ 정답을 확인하세요' : '정답을 확인하세요');
           judge.className = 'rc-judge ' + (ok ? 'ok' : 'no');
         }
         back.classList.add('show');
@@ -1933,7 +1943,7 @@ let App = {
   _finishReview() {
     const modal = $('review-modal');
     modal.classList.remove('open');
-    this.showToast(`✅ 복습 완료! (${this._reviewWords.length}개 단어)`, 'success');
+    this.showToast(`복습 완료! (${this._reviewWords.length}개 단어)`, 'success');
     this.renderVocabulary();
     delete this._reviewWords;
     delete this._reviewIndex;
@@ -2037,10 +2047,10 @@ let App = {
     // AI._call returns an error object instead of throwing, so inspect the result.
     if (!result || result.error || !result.gistKo) {
       const msg = result?.message || '응답이 비어있습니다';
-      this.showToast(`❌ 연결 실패: ${msg}`, 'error');
+      this.showToast(`연결 실패: ${msg}`, 'error');
       return;
     }
-    this.showToast(`✅ 연결 성공! (${result.gistKo.slice(0, 30)})`, 'success');
+    this.showToast(`연결 성공! (${result.gistKo.slice(0, 30)})`, 'success');
   },
 
   /* ===== Feedback History ===== */
@@ -2063,7 +2073,7 @@ let App = {
         <div class="history-item">
           <div class="hi-sent">${escapeHtml(s.originalSentence?.slice(0, 100))}</div>
           <div class="hi-user">내 해석: ${escapeHtml(s.finalUserTranslation?.slice(0, 60))}</div>
-          <div class="hi-fb">${s.storyNote ? '💡 ' + escapeHtml(s.storyNote?.slice(0, 100)) : s.literalTranslation ? '🔍 ' + escapeHtml(s.literalTranslation?.slice(0, 80)) : ''}</div>
+          <div class="hi-fb">${s.storyNote ? escapeHtml(s.storyNote?.slice(0, 100)) : s.literalTranslation ? escapeHtml(s.literalTranslation?.slice(0, 80)) : ''}</div>
           <div class="hi-meta"><span>${new Date(s.createdAt).toLocaleString()}</span></div>
         </div>`;
     });
@@ -2073,7 +2083,7 @@ let App = {
   async renderReport() {
     const body = $('report-body');
     if (!body) return;
-    body.innerHTML = '🔄 집계 중...';
+    body.innerHTML = '집계 중…';
     const s = await getDependencyStats();
 
     if (s.all.sessions === 0) {
@@ -2098,14 +2108,14 @@ let App = {
         <div class="rc-title">${title}</div>
         <div class="rc-big">${b.rate}<span class="rc-unit">회 / 1000단어</span></div>
         <div class="rc-sub">읽은 단어 ${fmt(b.words)} · 세션 ${fmt(b.sessions)}</div>
-        <div class="rc-break">📖 사전 ${fmt(b.dict)} · 🌐 번역 ${fmt(b.trans)} · 🔍 힌트 ${fmt(b.help)}</div>
+        <div class="rc-break">사전 ${fmt(b.dict)} · 번역 ${fmt(b.trans)} · 힌트 ${fmt(b.help)}</div>
       </div>`;
 
     const tip = this._coachTip(s);
 
     body.innerHTML = `
       <div class="report-note">핵심 지표는 <b>1000단어당 도움 사용 횟수</b>입니다. 낮을수록 더 독립적으로 읽고 있다는 뜻이에요.</div>
-      ${tip ? `<div class="coach-tip ${tip.cls}"><span class="coach-ico">🧭</span><span>${escapeHtml(tip.text)}</span></div>` : ''}
+      ${tip ? `<div class="coach-tip ${tip.cls}"><span>${escapeHtml(tip.text)}</span></div>` : ''}
       <div class="report-trend ${trendInfo.cls}">${trendInfo.txt}</div>
       <div class="report-grid">
         ${card('오늘', s.today)}
@@ -2123,7 +2133,7 @@ let App = {
     try {
       const s = await getDependencyStats();
       const tip = this._coachTip(s);
-      if (tip) this.showToast('🧭 ' + tip.text, tip.cls === 'good' ? 'success' : 'info');
+      if (tip) this.showToast(tip.text, tip.cls === 'good' ? 'success' : 'info');
     } catch (e) { /* non-blocking */ }
   },
 
@@ -2200,12 +2210,12 @@ let App = {
     // 카드 5개로는 '외움 비율'이 출렁이므로 임계를 올렸다.
     const v = sig.vocab;
     if (v.total < 10) {
-      skills.push({ key: 'vocab', label: '어휘력', icon: '📖', score: null, sample: v.total, note: '단어 카드를 10개 이상 모으면 평가돼요.' });
+      skills.push({ key: 'vocab', label: '어휘력', score: null, sample: v.total, note: '단어 카드를 10개 이상 모으면 평가돼요.' });
     } else {
       const score = clamp(((v.known + v.learning * 0.4) / v.total) * 100);
       const conf = this._confidence(v.total, 25, 60);
       const weak = (conf.level !== 'low' && v.knownRatio < 0.3) ? '외운 단어 비율이 낮아요. 복습을 더 자주 해보세요.' : null;
-      skills.push({ key: 'vocab', label: '어휘력', icon: '📖', score, sample: v.total, conf, weak,
+      skills.push({ key: 'vocab', label: '어휘력', score, sample: v.total, conf, weak,
         detail: `단어 ${v.total}개 · 외움 ${v.known} / 학습중 ${v.learning} / 새 ${v.new}` });
     }
 
@@ -2213,7 +2223,7 @@ let App = {
     // 한 세션에 토큰이 ~10개이므로 5세션≈50토큰부터 의미가 있다.
     const st = sig.structure;
     if (st.totalSessions < 3) {
-      skills.push({ key: 'parse', label: '구문 파싱', icon: '🏷️', score: null, sample: st.totalSessions, note: '구조 분석을 3회 이상 하면 평가돼요.' });
+      skills.push({ key: 'parse', label: '구문 파싱', score: null, sample: st.totalSessions, note: '구조 분석을 3회 이상 하면 평가돼요.' });
     } else {
       const score = clamp(st.accuracy * 100);
       const conf = this._confidence(st.totalSessions, 5, 15);
@@ -2225,7 +2235,7 @@ let App = {
         if (g.accuracy < weakAcc) { weakAcc = g.accuracy; weakRole = role; }
       }
       const weak = (weakRole && weakAcc < accThreshold) ? `'${weakRole}' 인식 정확도가 ${Math.round(weakAcc * 100)}%로 약해요.` : null;
-      skills.push({ key: 'parse', label: '구문 파싱', icon: '🏷️', score, sample: st.totalSessions, conf, weak, weakRole,
+      skills.push({ key: 'parse', label: '구문 파싱', score, sample: st.totalSessions, conf, weak, weakRole,
         detail: `구조 분석 ${st.totalSessions}회 · 토큰 정확도 ${Math.round(st.accuracy * 100)}%` });
     }
 
@@ -2234,7 +2244,7 @@ let App = {
     // 또한 top issue가 의미를 가지려면 자체 빈도가 ≥3 이어야 함.
     const ti = sig.transIssues;
     if (ti.total < 8) {
-      skills.push({ key: 'grammar', label: '문법·작문', icon: '✍️', score: null, sample: ti.total, note: '해석 훈련을 8회 이상 하면 평가돼요.' });
+      skills.push({ key: 'grammar', label: '문법·작문', score: null, sample: ti.total, note: '해석 훈련을 8회 이상 하면 평가돼요.' });
     } else {
       const issueRate = ti.scored / ti.total;
       const score = clamp((1 - issueRate) * 100);
@@ -2242,7 +2252,7 @@ let App = {
       let topIssue = null, topN = 0;
       for (const [k, n] of Object.entries(ti.counts)) if (n > topN) { topN = n; topIssue = k; }
       const weak = (topIssue && topN >= 3) ? `가장 잦은 실수: ${this._ISSUE_LABELS[topIssue] || topIssue} (${topN}회)` : null;
-      skills.push({ key: 'grammar', label: '문법·작문', icon: '✍️', score, sample: ti.total, conf, weak, topIssue,
+      skills.push({ key: 'grammar', label: '문법·작문', score, sample: ti.total, conf, weak, topIssue,
         detail: `해석 시도 ${ti.total}회 · 지적 ${ti.scored}회` });
     }
 
@@ -2295,7 +2305,7 @@ let App = {
   async renderDiagnosis() {
     const body = $('diagnosis-body');
     if (!body) return;
-    body.innerHTML = '🔄 진단 집계 중...';
+    body.innerHTML = '진단 집계 중…';
     const sig = await getProficiencySignals();
     const p = this._computeProficiency(sig);
     this._lastProficiency = p;
@@ -2315,7 +2325,7 @@ let App = {
     const bar = s => {
       if (s.score == null) {
         return `<div class="skill-row na">
-          <div class="skill-head"><span class="skill-name">${s.icon} ${s.label}</span><span class="skill-score na">데이터 부족</span></div>
+          <div class="skill-head"><span class="skill-name">${s.label}</span><span class="skill-score na">데이터 부족</span></div>
           <div class="skill-track"><div class="skill-fill" style="width:0%"></div></div>
           <div class="skill-detail">${escapeHtml(s.note || '')}</div>
         </div>`;
@@ -2324,11 +2334,11 @@ let App = {
       const isLow = s.conf?.level === 'low';
       return `<div class="skill-row${isLow ? ' low-conf' : ''}">
         <div class="skill-head">
-          <span class="skill-name">${s.icon} ${s.label}</span>
+          <span class="skill-name">${s.label}</span>
           <span class="skill-meta">${confChip(s.conf)}<span class="skill-score ${c}">${s.score}</span></span>
         </div>
         <div class="skill-track"><div class="skill-fill ${c}" style="width:${s.score}%"></div></div>
-        <div class="skill-detail">${escapeHtml(s.detail || '')}${s.weak ? ` · <span class="skill-weak">⚠️ ${escapeHtml(s.weak)}</span>` : ''}</div>
+        <div class="skill-detail">${escapeHtml(s.detail || '')}${s.weak ? ` · <span class="skill-weak">${escapeHtml(s.weak)}</span>` : ''}</div>
       </div>`;
     };
 
@@ -2345,12 +2355,12 @@ let App = {
       <div class="diag-note">영역별 점수는 단어장·구조 분석·해석 훈련·읽기 기록에서 자동 계산됩니다. 표본이 적은 영역은 신뢰도 라벨로 표시돼요.</div>
       <div class="skill-list">${p.skills.map(bar).join('')}</div>
       ${w ? `<div class="diag-weak-card">
-        <div class="dw-title">🎯 가장 약한 영역: ${w.icon} ${escapeHtml(w.label)} (${w.score}점)</div>
+        <div class="dw-title">가장 약한 영역: ${escapeHtml(w.label)} (${w.score}점)</div>
         <div class="dw-detail">${escapeHtml(w.weak || w.detail || '')}</div>
-        <button class="btn" id="diag-drill-btn">🎯 이 약점 보완 학습 시작</button>
+        <button class="btn" id="diag-drill-btn">이 약점 보완 학습 시작</button>
       </div>` : '<div class="diag-note">신뢰도 높은 영역에서 두드러진 약점이 아직 보이지 않아요. 학습이 더 쌓이면 약점을 자동으로 짚어드릴게요.</div>'}
       <div class="diag-actions">
-        <button class="btn-s" id="diag-ai-btn">🤖 AI 정밀 진단 받기</button>
+        <button class="btn-s" id="diag-ai-btn">AI 정밀 진단 받기</button>
       </div>
       <div id="diag-ai" class="diag-ai"></div>
       <div id="diag-drill" class="diag-drill"></div>
@@ -2373,14 +2383,14 @@ let App = {
     out.innerHTML = `
       <div class="diag-ai-card">
         <div class="dai-head">
-          <div class="dai-level">🧭 ${escapeHtml(data.levelKo || '')}</div>
+          <div class="dai-level">${escapeHtml(data.levelKo || '')}</div>
           <div class="dai-meta">${escapeHtml(when)}${stale ? ' · <span class="dai-stale">새 활동이 쌓였어요</span>' : ''}</div>
         </div>
         <div class="dai-summary">${escapeHtml(data.summaryKo || '')}</div>
         ${(data.strengths && data.strengths.length) ? `<div class="dai-block"><b>💪 강점</b>${list(data.strengths, 'ul')}</div>` : ''}
-        ${(data.weaknesses && data.weaknesses.length) ? `<div class="dai-block"><b>⚠️ 약점</b>${list(data.weaknesses, 'ul')}</div>` : ''}
+        ${(data.weaknesses && data.weaknesses.length) ? `<div class="dai-block"><b>약점</b>${list(data.weaknesses, 'ul')}</div>` : ''}
         ${(data.planKo && data.planKo.length) ? `<div class="dai-block"><b>📋 학습 계획</b>${list(data.planKo, 'ol')}</div>` : ''}
-        ${stale ? '<button class="btn-s mt-8" id="diag-ai-refresh">🔄 새로 진단</button>' : ''}
+        ${stale ? '<button class="btn-s mt-8" id="diag-ai-refresh">새로 진단</button>' : ''}
       </div>`;
     $('diag-ai-refresh')?.addEventListener('click', () => this._aiDiagnose(true));
   },
@@ -2395,11 +2405,11 @@ let App = {
     const cache = this._loadDiagCache();
     if (!force && cache && !this._isDiagStale(cache, this._lastActivityCount || 0)) {
       this._renderDiagAI(cache.data, cache.ts, false);
-      this.showToast('🧭 최근 진단을 표시했어요. 새 학습이 더 쌓이면 자동으로 갱신돼요.', 'info');
+      this.showToast('최근 진단을 표시했어요. 새 학습이 더 쌓이면 자동으로 갱신돼요.', 'info');
       return;
     }
     out.style.display = 'block';
-    out.innerHTML = '🤖 AI가 점수표를 분석하는 중...';
+    out.innerHTML = 'AI가 점수표를 분석하는 중…';
     const profile = {
       overall: { score: p.overallScore, cefr: p.cefr, levelKo: p.levelKo, confidence: p.overallConf },
       skills: p.scored.map(s => ({
@@ -2408,7 +2418,7 @@ let App = {
       }))
     };
     const data = await AI.assessProficiency(profile);
-    if (data.error) { out.innerHTML = '⚠️ 진단을 불러오지 못했어요. 잠시 후 다시 시도해주세요.'; return; }
+    if (data.error) { out.innerHTML = '진단을 불러오지 못했어요. 잠시 후 다시 시도해주세요.'; return; }
     if (!data.isDemo) this._saveDiagCache(data, this._lastActivityCount || 0);
     this._renderDiagAI(data, Date.now(), false);
   },
@@ -2437,13 +2447,13 @@ let App = {
       return;
     }
     out.style.display = 'block';
-    out.innerHTML = '🎯 약점 맞춤 문제를 만드는 중...';
+    out.innerHTML = '약점 맞춤 문제를 만드는 중…';
     let detail = w.weak || w.detail || '';
     if (w.key === 'parse' && w.weakRole) detail = `구조 파싱에서 '${w.weakRole}' 역할 인식이 약함. ${detail}`;
     if (w.key === 'grammar' && w.topIssue) detail = `해석 훈련에서 '${this._ISSUE_LABELS[w.topIssue] || w.topIssue}' 실수가 잦음. ${detail}`;
     const data = await AI.weaknessDrill(w.label, detail);
     if (data.error || !data.drills || !data.drills.length) {
-      out.innerHTML = `<div class="drill-card"><div class="drill-tip">${escapeHtml(data.tipKo || '⚠️ 문제를 생성하지 못했어요. 다시 시도해주세요.')}</div></div>`;
+      out.innerHTML = `<div class="drill-card"><div class="drill-tip">${escapeHtml(data.tipKo || '문제를 생성하지 못했어요. 다시 시도해주세요.')}</div></div>`;
       return;
     }
     if (!data.isDemo) this._saveDrillCache(w.key, data);
@@ -2456,8 +2466,8 @@ let App = {
     out.style.display = 'block';
     out.innerHTML = `
       <div class="drill-card">
-        <div class="drill-focus">🎯 ${escapeHtml(data.focusKo || w.label)}${cached ? ' <span class="dai-meta">· 저장된 문제</span>' : ''}</div>
-        ${data.tipKo ? `<div class="drill-tip">💡 ${escapeHtml(data.tipKo)}</div>` : ''}
+        <div class="drill-focus">${escapeHtml(data.focusKo || w.label)}${cached ? ' <span class="dai-meta">· 저장된 문제</span>' : ''}</div>
+        ${data.tipKo ? `<div class="drill-tip">${escapeHtml(data.tipKo)}</div>` : ''}
         <div class="drill-items">
           ${data.drills.map((d, i) => `
             <div class="drill-item">
@@ -2465,12 +2475,12 @@ let App = {
               ${d.taskKo ? `<div class="di-task">${escapeHtml(d.taskKo)}</div>` : ''}
               <button class="di-reveal" data-i="${i}">정답 보기</button>
               <div class="di-answer" id="di-ans-${i}" style="display:none">
-                <div class="di-a">✅ ${escapeHtml(d.answerKo || '')}</div>
+                <div class="di-a">${escapeHtml(d.answerKo || '')}</div>
                 ${d.explainKo ? `<div class="di-explain">${escapeHtml(d.explainKo)}</div>` : ''}
               </div>
             </div>`).join('')}
         </div>
-        <div class="drill-foot"><button class="btn-s" id="drill-refresh">🔄 다른 문제로</button></div>
+        <div class="drill-foot"><button class="btn-s" id="drill-refresh">다른 문제로</button></div>
       </div>`;
     out.querySelectorAll('.di-reveal').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -2491,7 +2501,7 @@ let App = {
     a.download = `E-Story-backup-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    this.showToast('✅ 백업 파일 다운로드 완료!', 'success');
+    this.showToast('백업 파일 다운로드 완료!', 'success');
   },
 
   async importBackup(e) {
@@ -2501,7 +2511,7 @@ let App = {
       const text = await file.text();
       
       // C3: Confirm before destructive import
-      if (!confirm('⚠️ 기존 데이터가 모두 대체됩니다.\n현재 데이터를 자동 백업하고 진행하시겠습니까?')) {
+      if (!confirm('기존 데이터가 모두 대체됩니다.\n현재 데이터를 자동 백업하고 진행하시겠습니까?')) {
         this.showToast('가져오기가 취소되었습니다.', 'info');
         e.target.value = '';
         return;
@@ -2522,10 +2532,10 @@ let App = {
       }
       
       await importData(text);
-      this.showToast('✅ 데이터 복원 완료! 페이지를 새로고침합니다.', 'success');
+      this.showToast('데이터 복원 완료! 페이지를 새로고침합니다.', 'success');
       setTimeout(() => location.reload(), 1000);
     } catch(err) {
-      this.showToast('❌ 복원 실패: ' + err.message, 'error');
+      this.showToast('복원 실패: ' + err.message, 'error');
     }
     e.target.value = '';
   },
@@ -2538,6 +2548,17 @@ let App = {
     t.textContent = msg;
     c.appendChild(t);
     setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity .3s'; setTimeout(() => t.remove(), 300); }, 3000);
+  },
+
+  _aiToastAt: {},
+  _aiToastOnce(kind, msg, type, detail) {
+    const now = Date.now();
+    if (now - (this._aiToastAt[kind] || 0) < 8000) {
+      if (detail) console.warn('AI error (suppressed toast):', detail);
+      return;
+    }
+    this._aiToastAt[kind] = now;
+    this.showToast(msg, type);
   }
 };
 

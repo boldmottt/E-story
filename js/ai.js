@@ -248,7 +248,7 @@ const AI = {
         { role: 'user', content: `Korean meaning of "${word}" in: "${sentence}"` }
       ], 'You are a concise English-Korean dictionary. Give the meaning of the specific word the user asks about, in the context of this sentence.', true, 800);
       if (r && !r.error) return r;
-      return { word, meaningKo: '(API 오류)', partOfSpeech: '' };
+      return { error: true, message: r?.message || 'AI 응답 실패', word, meaningKo: '', partOfSpeech: '' };
     });
   },
 
@@ -260,7 +260,7 @@ const AI = {
         { role: 'user', content: `Explain grammar of: "${sentence}"` }
       ], 'Explain the grammar structure of this sentence in Korean. Focus on one key point. Do NOT translate the sentence.', true, 800);
       if (r && !r.error) return r;
-      return { structure: '(API 오류)', keyPoints: [], tense: '', clauseType: '' };
+      return { error: true, message: r?.message || 'AI 응답 실패', structure: '', keyPoints: [], tense: '', clauseType: '' };
     });
   },
 
@@ -423,7 +423,7 @@ Return JSON: { "correctedEn": "...", "notesKo": ["..."], "usedTargetExpression":
         { role: 'user', content: text.slice(0, 4000) }
       ], 'Return JSON: { "summary3lines": "", "characters": [], "keyScenes": [], "expressions": [], "studySentence": "" } — Korean chapter summary. Only summarize the text provided. Do NOT add information from outside this text.', true, 2000);
       if (r && !r.error) return r;
-      return { summary3lines: '(API 오류)', characters: [], keyScenes: [], expressions: [] };
+      return { error: true, message: r?.message || 'AI 응답 실패', summary3lines: '', characters: [], keyScenes: [], expressions: [] };
     });
   },
 

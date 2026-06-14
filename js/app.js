@@ -585,12 +585,23 @@ let App = {
     const total = this._totalPages();
     const page = this._page || 0;
     if (dir === 'next') {
-      if (page < total - 1) { this._page = page + 1; this._renderPage(); this._savePageProgress(); }
+      if (page < total - 1) { this._page = page + 1; this._renderPage(); this._persistPosition(); }
       else this.goToChunk(this.currentSelectedChunkIndex + 1, 'first');
     } else {
-      if (page > 0) { this._page = page - 1; this._renderPage(); this._savePageProgress(); }
+      if (page > 0) { this._page = page - 1; this._renderPage(); this._persistPosition(); }
       else this.goToChunk(this.currentSelectedChunkIndex - 1, 'last');
     }
+  },
+
+  // Persist the exact reading position (chunk + within-chunk page) plus the
+  // overall progress %. Page turns must write currentPage, otherwise the book
+  // reopens on a stale page.
+  _persistPosition() {
+    if (!this.currentBook) return;
+    const stage = document.querySelector('.stage');
+    const offset = stage ? stage.scrollTop : (window.scrollY || window.pageYOffset || 0);
+    updateBookProgress(this.currentBook.id, this.currentSelectedChunkIndex, offset, this._page || 0);
+    this._savePageProgress();
   },
 
   // Re-render only the text + page nav (keeps warmup/summary/goal intact).
@@ -728,11 +739,11 @@ let App = {
       this.loadChapterSummary();
       this.loadWarmup();
       (document.querySelector('.stage') || window).scrollTo({ top: 0, behavior: 'instant' });
+      // Persist the new chunk AND its resolved page. This must run after
+      // this._page is set, or a stale page from the previous chunk leaks in.
+      updateBookProgress(this.currentBook.id, this.currentSelectedChunkIndex, 0, this._page || 0);
       this._savePageProgress();
     });
-    
-    // Save current chunk in DB
-    updateBookProgress(this.currentBook.id, index, 0, this._page || 0);
   },
 
   setReaderMode(mode) {

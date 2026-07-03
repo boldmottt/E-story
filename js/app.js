@@ -20,7 +20,14 @@ let App = {
   async init() {
     await AI.init();
     TTS.init();
-    
+
+    // Single-user local-first app: ask the browser to exempt IndexedDB from
+    // storage eviction, and register the offline shell.
+    navigator.storage?.persist?.().catch(() => {});
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    }
+
     // Navigation (sidebar + bottom tabbar + more-sheet rows)
     document.querySelectorAll('.nav-item, .tab[data-view], .sheet-row[data-view]').forEach(item => {
       item.addEventListener('click', () => {
@@ -69,7 +76,7 @@ let App = {
     grid.addEventListener('click', (e) => {
       const delBtn = e.target.closest('.book-del');
       if (delBtn) { this.deleteBookConfirm(parseInt(delBtn.dataset.id)); return; }
-      const card = e.target.closest('.book-card');
+      const card = e.target.closest('.book-card, .continue-card');
       if (card) { this.openBook(parseInt(card.dataset.id)); return; }
       if (e.target.closest('#upload-area')) {
         const input = document.getElementById('file-input');
@@ -218,6 +225,8 @@ let App = {
       await this.openBook(this._pendingBookId);
       this._pendingBookId = null;
     }
+
+    this._maybeBackupNudge();
     
     // Listen for AI events — dedupe identical errors within a window so a
     // burst of parallel calls doesn't stack the same toast.
@@ -233,6 +242,36 @@ let App = {
       if (!e.target.closest('.quick-menu') && !e.target.closest('.sent') && !e.target.closest('.qm-word')) {
         this.closeQuickMenu();
       }
+    });
+
+    // Reader page turns: horizontal swipe on the text (mobile) and arrow
+    // keys (desktop). Swipe must be decisively horizontal so it never fires
+    // during vertical reading scroll or text selection.
+    const readerPage = $('reader-page');
+    if (readerPage) {
+      let swipe = null;
+      readerPage.addEventListener('touchstart', (e) => {
+        if (!e.target.closest('#reader-text')) { swipe = null; return; }
+        const t = e.touches[0];
+        swipe = { x: t.clientX, y: t.clientY, at: Date.now() };
+      }, { passive: true });
+      readerPage.addEventListener('touchend', (e) => {
+        if (!swipe) return;
+        const t = e.changedTouches[0];
+        const dx = t.clientX - swipe.x, dy = t.clientY - swipe.y;
+        const fast = Date.now() - swipe.at < 600;
+        swipe = null;
+        if (!fast || Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 2) return;
+        if (window.getSelection()?.toString()) return;
+        this.turnPage(dx < 0 ? 'next' : 'prev');
+      }, { passive: true });
+    }
+    document.addEventListener('keydown', (e) => {
+      if (this.currentView !== 'reader') return;
+      if (e.target.closest('input, textarea, select, [contenteditable]')) return;
+      if ($('review-modal')?.classList.contains('open') || $('study-panel')?.classList.contains('open')) return;
+      if (e.key === 'ArrowRight') { e.preventDefault(); this.turnPage('next'); }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); this.turnPage('prev'); }
     });
 
     // Flush any open reading session when the tab closes (dependency logging).
@@ -290,6 +329,7 @@ let App = {
     if (stage) stage.scrollTop = 0;
     
     const renderers = {
+      bookshelf: () => this.loadBookshelf(),
       vocabulary: () => this.renderVocabulary(),
       queue: () => this.renderQueue(),
       highlights: () => this.renderHighlights(),
@@ -340,6 +380,24 @@ let App = {
     
     const hasBooks = books.length > 0;
     let html = '';
+
+    // Continue-reading hero: one tap back into the exact last position.
+    if (hasBooks) {
+      const s = await getSettings();
+      const last = books.find(b => b.id === s.lastOpenedBookId) ||
+        [...books].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0];
+      if (last && (last.currentChunk > 0 || last.currentPage > 0 || (last.readingProgress || 0) > 0)) {
+        const pct = last.readingProgress ?? (last.totalChunks > 0 ? Math.round((last.currentChunk / last.totalChunks) * 100) : 0);
+        html += `<div class="continue-card" data-id="${last.id}" role="button" tabindex="0">
+          <div class="cc-label">이어 읽기</div>
+          <div class="cc-title">${escapeHtml(last.title)}</div>
+          <div class="cc-meta"><span>챕터 ${(last.currentChunk || 0) + 1} / ${last.totalChunks}</span><span>${pct}%</span></div>
+          <div class="progress"><div class="progress-fill" style="width:${pct}%"></div></div>
+          <svg class="ico-svg cc-arrow" width="20" height="20"><use href="#i-chevron-right"/></svg>
+        </div>`;
+      }
+    }
+
     if (!hasBooks) {
       html += `<div class="upload-empty" id="upload-area">
         <svg class="empty-illo" viewBox="0 0 120 80" aria-hidden="true"><use href="#illo-shelf"/></svg>
@@ -2512,7 +2570,20 @@ let App = {
     a.download = `E-Story-backup-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
+    await this._patchSettings({ lastBackupAt: Date.now() });
     this.showToast('백업 파일 다운로드 완료!', 'success');
+  },
+
+  // Local-only data means one cleared browser profile loses everything.
+  // Nudge (max once per session) when there's meaningful data and the last
+  // backup is 14+ days old or has never happened.
+  async _maybeBackupNudge() {
+    const s = await getSettings();
+    const words = await DB.vocabulary.count();
+    if (words < 20) return;
+    const TWO_WEEKS = 14 * 24 * 60 * 60 * 1000;
+    if (s.lastBackupAt && Date.now() - s.lastBackupAt < TWO_WEEKS) return;
+    this.showToast('단어장이 쌓이고 있어요 — 설정에서 백업 파일을 한 번 내려받아 두세요.', 'info');
   },
 
   async importBackup(e) {

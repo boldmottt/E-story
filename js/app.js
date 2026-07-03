@@ -1157,7 +1157,7 @@ let App = {
     overlay.id = 'structure-modal';
     overlay.innerHTML = `
       <div class="modal struct-modal">
-        <h2>🏷️ 구조 분석</h2>
+        <h2>구조 분석</h2>
         <p class="struct-help">역할을 고른 뒤 단어를 눌러 라벨링하세요. 같은 단어를 다시 누르면 해제됩니다.</p>
         <div class="struct-palette">${palette}</div>
         <div class="struct-tokens">${toks}</div>

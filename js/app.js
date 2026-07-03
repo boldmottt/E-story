@@ -402,7 +402,7 @@ let App = {
       html += `<div class="upload-empty" id="upload-area">
         <svg class="empty-illo" viewBox="0 0 120 80" aria-hidden="true"><use href="#illo-shelf"/></svg>
         <div class="empty-title">첫 책을 불러오세요</div>
-        <div class="empty-body">.txt 파일을 올리면 챕터·문장 단위로 자동 정리됩니다. 읽다 만난 단어와 표현은 자동으로 단어장에 쌓여요.</div>
+        <div class="empty-body">.txt 파일을 올리면 챕터·문장 단위로 자동 정리돼요. 읽다 만난 단어와 표현은 자동으로 단어장에 쌓여요.</div>
         <div class="upload-actions">
           <button class="btn" type="button" id="upload-pick">
             <svg class="ico-svg" width="16" height="16" aria-hidden="true"><use href="#i-cloud-up"/></svg>
@@ -1726,7 +1726,7 @@ let App = {
       list.innerHTML = `<div class="empty-state">
         <svg class="empty-illo tinted" viewBox="0 0 120 80"><use href="#illo-quill"/></svg>
         <div class="empty-title">마음에 새길 문장이 없어요</div>
-        <div class="empty-body">읽다 멈추게 되는 문장을 골라 하이라이트로 저장하세요. 여기 한 자리에 모입니다.</div>
+        <div class="empty-body">읽다 멈추게 되는 문장을 골라 하이라이트로 저장하세요. 여기 한 자리에 모여요.</div>
       </div>`;
       return;
     }
@@ -1863,7 +1863,7 @@ let App = {
       grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1">
         <svg class="empty-illo tinted" viewBox="0 0 120 80"><use href="#illo-spread"/></svg>
         <div class="empty-title">단어장이 비어 있어요</div>
-        <div class="empty-body">읽다 만난 모르는 단어를 한 번 톡 — 자동으로 카드가 만들어지고 복습 일정이 잡힙니다.</div>
+        <div class="empty-body">읽다 만난 모르는 단어를 한 번 톡 — 자동으로 카드가 만들어지고 복습 일정이 잡혀요.</div>
       </div>`;
       return;
     }

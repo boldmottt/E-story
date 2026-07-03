@@ -897,7 +897,13 @@ svg use{pointer-events:none}
   font-size:var(--t-base);font-weight:600;font-family:var(--font);
   cursor:pointer;transition:var(--t);background:var(--bg4);
 }
-.struct-role.active{box-shadow:0 0 0 2px var(--a0) inset,0 4px 12px rgba(0,0,0,.4)}
+.struct-role{opacity:.62}
+.struct-role.active{
+  opacity:1;
+  border-color:currentColor;
+  box-shadow:0 0 0 1.5px currentColor inset,0 4px 12px rgba(0,0,0,.4);
+  transform:translateY(-1px);
+}
 .struct-tokens{
   font-family:var(--font-read);font-size:1.0625rem;line-height:2.1;
   padding:18px;background:var(--paper);border:1px solid var(--bd);
@@ -907,11 +913,14 @@ svg use{pointer-events:none}
 .struct-tok:hover{background:var(--bg4)}
 .struct-tok.ok{border-color:var(--a1);box-shadow:0 0 0 1px var(--a1)}
 .struct-tok.miss{border-color:var(--a3);box-shadow:0 0 0 1px var(--a3)}
+/* Six roles, six clearly-separated hues: teal / coral / gold / violet /
+   sage / neutral. r2(gold) and the old r4(amber) were near-identical. */
 .struct-modal .r0{background:rgba(111,179,199,.20);color:#9CCEDC}
 .struct-modal .r1{background:rgba(226,123,110,.18);color:#EFA298}
 .struct-modal .r2{background:rgba(201,169,97,.20);color:#E0C788}
 .struct-modal .r3{background:rgba(155,140,255,.20);color:#B9AEFF}
-.struct-modal .r4{background:rgba(212,163,71,.22);color:#E3BD63}
+.struct-modal .r4{background:rgba(127,176,105,.20);color:#A4CE8F}
+.struct-modal .r5{background:rgba(160,166,178,.16);color:#B7BDC9}
 .struct-modal .r5{background:rgba(255,255,255,.10);color:var(--tx2)}
 .struct-result:empty{display:none}
 .struct-result{margin-bottom:16px}

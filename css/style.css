@@ -1965,8 +1965,9 @@ svg use{pointer-events:none}
   100%{background:transparent}
 }
 
-/* Loading skeleton for hint results */
-.qm-hint-result.loading:empty{
+/* Loading skeleton for hint results & ask answer */
+.qm-hint-result.loading:empty,
+.qm-ask-answer.loading:empty{
   min-height:36px;
   background:linear-gradient(90deg, var(--bg4) 25%, var(--bg5) 50%, var(--bg4) 75%);
   background-size:200% 100%;

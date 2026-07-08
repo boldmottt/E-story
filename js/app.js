@@ -183,7 +183,6 @@ let App = {
         queue: () => this.queueLater()
       };
       handlers[action]?.();
-      if (action) return;
     });
 
     // Close study panel
@@ -1079,8 +1078,8 @@ let App = {
     }
     const result = $('hint-result');
     result.style.display = 'block';
-    result.classList.add("loading");
-    result.textContent = '';
+    result.innerHTML = '';
+    result.classList.add('loading');
     this._logHelp('dictionaryClicks');
     const hint = await AI.wordHint(word, this.selectedSentence.text);
     if (hint.error) {
@@ -1105,8 +1104,8 @@ let App = {
   async grammarHint() {
     const result = $('hint-result');
     result.style.display = 'block';
-    result.classList.add("loading");
-    result.textContent = '';
+    result.innerHTML = '';
+    result.classList.add('loading');
     this._logHelp('helpStepsUsed');
     const data = await AI.grammarHint(this.selectedSentence.text);
     if (data.error) {
@@ -1119,8 +1118,8 @@ let App = {
   async sentenceGist() {
     const result = $('hint-result');
     result.style.display = 'block';
-    result.classList.add("loading");
-    result.textContent = '';
+    result.innerHTML = '';
+    result.classList.add('loading');
     this._logHelp('translationClicks');
     const data = await AI.sentenceGist(this.selectedSentence.text);
     if (data.error) {
@@ -1134,8 +1133,8 @@ let App = {
   async easyEnglish() {
     const result = $('hint-result');
     result.style.display = 'block';
-    result.classList.add("loading");
-    result.textContent = '';
+    result.innerHTML = '';
+    result.classList.add('loading');
     if (this.currentSessionId && typeof bumpSessionCounter === 'function') {
       bumpSessionCounter(this.currentSessionId, 'helpStepsUsed');
     }
@@ -1151,8 +1150,8 @@ let App = {
   async chunkReading() {
     const result = $('hint-result');
     result.style.display = 'block';
-    result.classList.add("loading");
-    result.textContent = '';
+    result.innerHTML = '';
+    result.classList.add('loading');
     this._logHelp('helpStepsUsed');
     const data = await AI.chunkReading(this.selectedSentence.text);
     if (data.error) {
@@ -1168,8 +1167,8 @@ let App = {
   async koreanGrammar() {
     const result = $('hint-result');
     result.style.display = 'block';
-    result.classList.add("loading");
-    result.textContent = '';
+    result.innerHTML = '';
+    result.classList.add('loading');
     this._logHelp('helpStepsUsed');
     const data = await AI.koreanGrammar(this.selectedSentence.text);
     if (data.error) {
@@ -1213,9 +1212,11 @@ let App = {
     const question = ta.value.trim();
     if (!question) { ta.focus(); return; }
     ans.style.display = 'block';
-    ans.textContent = '생각 중...';
+    ans.classList.add('loading');
+    ans.textContent = '';
     const context = `책: "${this.currentBook?.title || '알 수 없음'}", 챕터: ${this.currentSelectedChunkIndex + 1}/${this.currentChunks?.length || '?'} (${this.currentChunk?.title || ''})`;
     const data = await AI.storyBuddy(this.selectedSentence.text, question, context);
+    ans.classList.remove('loading');
     ans.textContent = data.answerKo || '답변을 불러올 수 없습니다.';
   },
 

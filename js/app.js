@@ -320,30 +320,40 @@ let App = {
       $('study-panel')?.classList.remove('open');
       this.closeQuickMenu();
     }
-    this.currentView = view;
-    document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.view === view));
-    document.querySelectorAll('.tab[data-view]').forEach(n => n.classList.toggle('active', n.dataset.view === view));
-    document.querySelectorAll('.content').forEach(c => c.classList.toggle('active', c.id === view + '-page'));
-    // Reset stage scroll so large-title is visible
-    const stage = document.querySelector('.stage');
-    if (stage) stage.scrollTop = 0;
     
-    const renderers = {
-      bookshelf: () => this.loadBookshelf(),
-      vocabulary: () => this.renderVocabulary(),
-      queue: () => this.renderQueue(),
-      highlights: () => this.renderHighlights(),
-      history: () => this.renderHistory(),
-      report: () => this.renderReport(),
-      diagnosis: () => this.renderDiagnosis(),
-      settings: () => this.loadSettings()
+    const doSwitch = () => {
+      this.currentView = view;
+      document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.view === view));
+      document.querySelectorAll('.tab[data-view]').forEach(n => n.classList.toggle('active', n.dataset.view === view));
+      document.querySelectorAll('.content').forEach(c => c.classList.toggle('active', c.id === view + '-page'));
+      // Reset stage scroll so large-title is visible
+      const stage = document.querySelector('.stage');
+      if (stage) stage.scrollTop = 0;
+      
+      const renderers = {
+        bookshelf: () => this.loadBookshelf(),
+        vocabulary: () => this.renderVocabulary(),
+        queue: () => this.renderQueue(),
+        highlights: () => this.renderHighlights(),
+        history: () => this.renderHistory(),
+        report: () => this.renderReport(),
+        diagnosis: () => this.renderDiagnosis(),
+        settings: () => this.loadSettings()
+      };
+      renderers[view]?.();
+      
+      this.updateTopbarTitle(view);
+      
+      // Persist current view for restore
+      this._patchSettings({ lastView: view });
     };
-    renderers[view]?.();
     
-    this.updateTopbarTitle(view);
-    
-    // Persist current view for restore
-    this._patchSettings({ lastView: view });
+    // Use View Transitions API for smooth navigation (Chromium + Safari)
+    if (document.startViewTransition) {
+      document.startViewTransition(() => doSwitch());
+    } else {
+      doSwitch();
+    }
   },
 
   updateTopbarTitle(view) {
@@ -388,12 +398,20 @@ let App = {
         [...books].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0];
       if (last && (last.currentChunk > 0 || last.currentPage > 0 || (last.readingProgress || 0) > 0)) {
         const pct = last.readingProgress ?? (last.totalChunks > 0 ? Math.round((last.currentChunk / last.totalChunks) * 100) : 0);
+        const title = last.title || '';
+        const hue = [...title].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
+        const initial = title.replace(/^[^a-zA-Z0-9가-힣]*/, '').charAt(0).toUpperCase() || 'B';
         html += `<div class="continue-card" data-id="${last.id}" role="button" tabindex="0">
-          <div class="cc-label">이어 읽기</div>
-          <div class="cc-title">${escapeHtml(last.title)}</div>
-          <div class="cc-meta"><span>챕터 ${(last.currentChunk || 0) + 1} / ${last.totalChunks}</span><span>${pct}%</span></div>
-          <div class="progress"><div class="progress-fill" style="width:${pct}%"></div></div>
-          <svg class="ico-svg cc-arrow" width="20" height="20"><use href="#i-chevron-right"/></svg>
+          <div class="book-cover" style="--seed-hue:${hue}">
+            <span class="book-initial">${escapeHtml(initial)}</span>
+            <div class="book-spine"></div>
+          </div>
+          <div class="cc-body">
+            <div class="cc-label">이어 읽기</div>
+            <div class="cc-title">${escapeHtml(title)}</div>
+            <div class="cc-meta"><span>챕터 ${(last.currentChunk || 0) + 1} / ${last.totalChunks}</span><span>${pct}%</span></div>
+            <div class="progress"><div class="progress-fill" style="width:${pct}%"></div></div>
+          </div>
         </div>`;
       }
     }
@@ -422,13 +440,25 @@ let App = {
       const badge = book.difficultyBand
         ? `<span class="diff-badge ${book.difficultyBand}" title="적합도: ${bandLabel[book.difficultyBand] || ''}">${escapeHtml(book.estimatedCefr || '')}</span>`
         : '';
+      // Generate hue from title for cover color
+      const title = book.title || '';
+      const hue = [...title].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
+      const initial = title.replace(/^[^a-zA-Z0-9가-힣]*/, '').charAt(0).toUpperCase() || 'B';
       html += `<div class="book-card" data-id="${book.id}">
         <button class="book-del" data-action="delete" data-id="${book.id}" title="책 삭제" aria-label="책 삭제"><svg class="ico-svg" width="14" height="14"><use href="#i-close"/></svg></button>
         ${badge}
-        <div class="title">${escapeHtml(book.title)}</div>
-        <div class="author">${escapeHtml(book.fileName)}</div>
-        <div class="progress"><div class="progress-fill" style="width:${pct}%"></div></div>
-        <div class="meta"><span>${pct}%</span><span>${book.totalChunks} ch</span></div>
+        <div class="book-cover" style="--seed-hue:${hue}">
+          <span class="book-initial">${escapeHtml(initial)}</span>
+          <div class="book-spine"></div>
+        </div>
+        <div class="book-info">
+          <div class="title">${escapeHtml(title)}</div>
+          <div class="author">${escapeHtml(book.fileName.replace(/\.txt$/i,''))}</div>
+          <div class="book-progress">
+            <div class="progress"><div class="progress-fill" style="width:${pct}%"></div></div>
+            <div class="meta"><span>${pct}%</span><span>${book.totalChunks} ch</span></div>
+          </div>
+        </div>
       </div>`;
     });
     
@@ -856,22 +886,56 @@ let App = {
     menu.innerHTML = `
       <div class="qm-sentence">${escapeHtml(text)}</div>
       <div class="qm-words-wrap">${wordHtml}</div>
-      <div class="qm-actions">
-        <button class="qm-btn word" data-action="word">단어 힌트</button>
+      <!-- Primary actions (4 most frequent) -->
+      <div class="qm-actions qm-primary-actions">
+        <button class="qm-btn word" data-action="word" title="단어 뜻">
+          <span class="qm-ico"><svg class="ico-svg" width="16" height="16"><use href="#i-search"/></svg></span>
+          <span class="qm-lbl">단어</span>
+        </button>
+        <button class="qm-btn gist" data-action="gist" title="한국어 요지">
+          <span class="qm-ico"><svg class="ico-svg" width="16" height="16"><use href="#i-globe"/></svg></span>
+          <span class="qm-lbl">번역</span>
+        </button>
+        <button class="qm-btn grammar" data-action="grammar" title="구문 분석">
+          <span class="qm-ico"><svg class="ico-svg" width="16" height="16"><use href="#i-target"/></svg></span>
+          <span class="qm-lbl">구문</span>
+        </button>
+        <button class="qm-btn study" data-action="study" title="해석 훈련">
+          <span class="qm-ico"><svg class="ico-svg" width="16" height="16"><use href="#i-sparkle"/></svg></span>
+          <span class="qm-lbl">해석</span>
+        </button>
+        <!-- More toggle -->
+        <button class="qm-btn qm-more-btn" data-action="expand" aria-expanded="false" title="더 많은 도구">
+          <span class="qm-ico"><svg class="ico-svg" width="16" height="16"><use href="#i-more"/></svg></span>
+          <span class="qm-lbl">더보기</span>
+        </button>
+      </div>
+      <!-- Secondary actions (collapsed) -->
+      <div class="qm-actions qm-secondary-actions" hidden>
         <button class="qm-btn phrase" data-action="phraseMode">구 저장</button>
-        <button class="qm-btn grammar" data-action="grammar">구문 힌트</button>
         <button class="qm-btn structure" data-action="structure">구조 분석</button>
         <button class="qm-btn kgram" data-action="koreanGrammar">한국인 포인트</button>
         <button class="qm-btn chunk" data-action="chunkReading">끊어 읽기</button>
         <button class="qm-btn easy" data-action="easyEnglish">쉬운 영어</button>
-        <button class="qm-btn gist" data-action="gist">문장 요지</button>
         <button class="qm-btn ask" data-action="ask">자유 질문</button>
-        <button class="qm-btn study" data-action="study">해석해보기</button>
         <button class="qm-btn highlight" data-action="highlight">하이라이트</button>
         <button class="qm-btn queue" data-action="queue">나중에</button>
       </div>
       <div id="hint-result" class="qm-hint-result"></div>
     `;
+    
+    // Wire up the more/expand toggle
+    const expandBtn = menu.querySelector('[data-action="expand"]');
+    const secondaryActions = menu.querySelector('.qm-secondary-actions');
+    if (expandBtn && secondaryActions) {
+      expandBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const expanded = expandBtn.getAttribute('aria-expanded') === 'true';
+        expandBtn.setAttribute('aria-expanded', !expanded);
+        secondaryActions.hidden = expanded;
+        expandBtn.classList.toggle('expanded', !expanded);
+      });
+    }
     
     menu.classList.add('open');
 

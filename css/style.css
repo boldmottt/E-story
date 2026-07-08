@@ -446,25 +446,40 @@ svg use{pointer-events:none}
 .continue-card{
   position:relative;
   grid-column:1/-1;
+  display:flex;gap:16px;
   background:
-    radial-gradient(320px 140px at 100% 0%, rgba(201,169,97,0.12), transparent 60%),
+    radial-gradient(420px 160px at 100% 0%, rgba(201,169,97,0.12), transparent 60%),
     linear-gradient(180deg, var(--bg4), var(--bg2));
   border:1px solid rgba(201,169,97,0.28);
   border-radius:var(--r-lg);
-  padding:18px 48px 18px 20px;
+  padding:18px 20px;
   cursor:pointer;
-  transition:transform var(--t), box-shadow var(--t), border-color var(--t);
+  transition:transform .25s cubic-bezier(.22,1,.36,1), box-shadow var(--t), border-color var(--t);
   box-shadow:inset 0 1px 0 rgba(255,255,255,0.05), 0 4px 16px rgba(0,0,0,0.3);
   -webkit-tap-highlight-color:transparent;
+  align-items:center;
 }
 .continue-card:hover,.continue-card:active{
-  transform:translateY(-1px);
+  transform:translateY(-3px);
   border-color:rgba(201,169,97,0.45);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,0.06), var(--shadow-md);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,0.06), 0 14px 32px rgba(0,0,0,0.45);
+}
+
+/* Larger cover for continue card */
+.continue-card .book-cover{
+  flex:0 0 64px;height:92px;
+  border-radius:6px 10px 10px 6px;
+}
+.continue-card .book-initial{
+  font-size:30px;
+}
+
+.continue-card .cc-body{
+  flex:1;min-width:0;
 }
 .continue-card .cc-label{
   font-size:11px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;
-  color:var(--a0);margin-bottom:6px;
+  color:var(--a0);margin-bottom:4px;
 }
 .continue-card .cc-title{
   font-family:var(--font-read);
@@ -474,57 +489,86 @@ svg use{pointer-events:none}
 }
 .continue-card .cc-meta{
   display:flex;gap:12px;font-size:var(--t-meta);color:var(--tx2);
-  font-variant-numeric:tabular-nums;margin-bottom:10px;
+  font-variant-numeric:tabular-nums;margin-bottom:8px;
 }
-.continue-card .cc-arrow{
-  position:absolute;right:16px;top:50%;transform:translateY(-50%);
-  color:var(--a0);opacity:.8;
+.continue-card .progress{
+  height:5px;background:rgba(255,255,255,0.08);
+  border-radius:var(--r-pill);overflow:hidden;
+}
+.continue-card .progress-fill{
+  height:100%;
+  background:linear-gradient(90deg, var(--a0), #E0C788);
+  border-radius:var(--r-pill);
+  transition:width .6s var(--ease-out);
 }
 .book-card{
   position:relative;
-  background:linear-gradient(180deg, var(--bg3), var(--bg2));
+  display:flex;gap:14px;
+  background:linear-gradient(135deg, var(--bg3), var(--bg2));
   border:1px solid var(--bd);
   border-radius:var(--r-md);
-  padding:18px;
+  padding:14px;
   cursor:pointer;
-  transition:transform var(--t), box-shadow var(--t), border-color var(--t);
+  transition:transform .25s cubic-bezier(.22,1,.36,1), box-shadow var(--t), border-color var(--t);
   overflow:hidden;
   -webkit-tap-highlight-color:transparent;
   box-shadow:inset 0 1px 0 rgba(255,255,255,0.025), 0 2px 8px rgba(0,0,0,0.25);
 }
-.book-card::before{
-  content:'';position:absolute;left:0;top:0;bottom:0;width:3px;
-  background:linear-gradient(180deg, var(--a0), transparent);
-  opacity:0;transition:opacity var(--t);
-}
-.book-card::after{
-  content:'';position:absolute;inset:0;pointer-events:none;
-  background:radial-gradient(400px 200px at 100% 0%, rgba(201,169,97,0.06), transparent 60%);
-  opacity:0;transition:opacity var(--t);
-}
 .book-card:hover,.book-card:active{
-  transform:translateY(-1px);border-color:var(--bd2);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,0.04), var(--shadow-md);
+  transform:translateY(-3px);border-color:rgba(201,169,97,0.35);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,0.04), 0 12px 28px rgba(0,0,0,0.4);
 }
-.book-card:hover::before,.book-card:active::before{opacity:1}
-.book-card:hover::after{opacity:1}
+
+/* Book cover visual generated from title hash */
+.book-cover{
+  position:relative;
+  flex:0 0 56px;height:80px;
+  border-radius:5px 9px 9px 5px;overflow:hidden;
+  background:linear-gradient(150deg,
+    hsl(var(--seed-hue, 34) 32% 30%),
+    hsl(var(--seed-hue, 34) 28% 18%));
+  display:grid;place-items:center;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,0.04);
+  transition:transform .25s cubic-bezier(.22,1,.36,1);
+  align-self:center;
+}
+.book-card:hover .book-cover{
+  transform:scale(1.04);
+}
+.book-spine{
+  position:absolute;left:0;top:0;bottom:0;width:4px;
+  background:rgba(0,0,0,0.28);
+}
+.book-initial{
+  font:700 26px 'Literata', serif;
+  color:#C9A961;opacity:.9;
+  text-shadow:0 1px 3px rgba(0,0,0,0.3);
+}
+
+.book-card .book-info{
+  flex:1;min-width:0;
+  display:flex;flex-direction:column;
+  gap:3px;
+}
 .book-card .title{
   font-family:var(--font-read);
   font-size:var(--t-lg);font-weight:600;
   letter-spacing:-.02em;line-height:1.25;color:var(--tx);
-  margin-bottom:4px;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
   font-feature-settings:"onum","ss01";
 }
 .book-card .author{
-  font-size:var(--t-base);color:var(--tx2);
+  font-size:var(--t-sm);color:var(--tx2);
   font-style:italic;font-family:var(--font-read);
-  margin-bottom:14px;
   display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;
+  margin-bottom:auto;
+}
+.book-card .book-progress{
+  margin-top:8px;
 }
 .book-card .progress{
-  height:3px;background:var(--bg4);
-  border-radius:var(--r-pill);overflow:hidden;margin-bottom:8px;
+  height:4px;background:var(--bg4);
+  border-radius:var(--r-pill);overflow:hidden;
 }
 .book-card .progress-fill{
   height:100%;
@@ -536,6 +580,7 @@ svg use{pointer-events:none}
   font-size:var(--t-sm);color:var(--tx3);
   display:flex;justify-content:space-between;
   font-feature-settings:"tnum";letter-spacing:.02em;
+  margin-top:5px;
 }
 .book-del{
   position:absolute;top:8px;right:8px;
@@ -550,11 +595,12 @@ svg use{pointer-events:none}
 .book-del svg{font-size:0}
 
 .diff-badge{
-  position:absolute;top:14px;right:50px;
+  position:absolute;top:10px;right:10px;
   padding:2px 9px;border-radius:var(--r-pill);
   font-size:10px;font-weight:600;letter-spacing:.06em;
   text-transform:uppercase;
   backdrop-filter:blur(6px);
+  z-index:1;
 }
 .diff-badge.green{background:var(--a1-soft);color:var(--a1);border:1px solid rgba(143,176,119,0.3)}
 .diff-badge.yellow{background:var(--a2-soft);color:var(--a2);border:1px solid rgba(212,163,71,0.3)}
@@ -770,6 +816,59 @@ svg use{pointer-events:none}
   font-family:var(--font-read);
 }
 .quick-menu .qm-actions{display:flex;flex-wrap:wrap;gap:6px}
+
+/* Primary actions row: compact icon+label buttons */
+.quick-menu .qm-primary-actions{
+  display:grid;
+  grid-template-columns:repeat(5,1fr);
+  gap:6px;
+}
+.qm-primary-actions .qm-btn{
+  flex-direction:column;gap:3px;
+  padding:10px 4px 8px;
+  border-radius:var(--r-sm);
+  min-height:52px;
+  text-align:center;
+}
+.qm-btn .qm-ico{
+  display:flex;align-items:center;justify-content:center;
+  width:24px;height:24px;
+}
+.qm-btn .qm-lbl{
+  font-size:10px;font-weight:500;
+  line-height:1;letter-spacing:-.01em;
+  white-space:nowrap;
+}
+
+/* More toggle button: expand/collapse animation */
+.qm-more-btn{
+  transition:background var(--t), transform .2s var(--ease-spring);
+}
+.qm-more-btn.expanded{
+  background:var(--a0-deep) !important;
+  color:var(--a0) !important;
+  border-color:var(--a0-dim) !important;
+}
+.qm-more-btn.expanded .qm-ico{
+  transform:rotate(45deg);
+  transition:transform .25s var(--ease-spring);
+}
+
+/* Secondary actions: pill buttons in a grid when toggled */
+.quick-menu .qm-secondary-actions{
+  display:grid;
+  grid-template-columns:1fr 1fr 1fr;
+  gap:6px;
+  margin-top:8px;
+  padding-top:10px;
+  border-top:1px solid var(--bd);
+  animation:fadeSlideDown .22s var(--ease-out);
+}
+@keyframes fadeSlideDown{
+  from{opacity:0;transform:translateY(-6px);max-height:0}
+  to{opacity:1;transform:translateY(0);max-height:200px}
+}
+
 .quick-menu .qm-btn{
   padding:9px 13px;
   border:1px solid transparent;
@@ -779,6 +878,7 @@ svg use{pointer-events:none}
   display:flex;align-items:center;gap:5px;
   letter-spacing:-.005em;
   min-height:36px;
+  justify-content:center;
 }
 .qm-btn.word,.qm-btn.chunk{background:var(--a5-soft);color:var(--a5);border-color:rgba(111,179,199,0.20)}
 .qm-btn.phrase,.qm-btn.structure,.qm-btn.ask{background:var(--a4-soft);color:var(--a4);border-color:rgba(155,140,255,0.20)}
@@ -1780,8 +1880,16 @@ svg use{pointer-events:none}
   /* Quick menu: floating popover */
   .quick-menu{
     left:auto;right:auto;bottom:auto;
-    border-radius:var(--r-md);min-width:360px;
+    border-radius:var(--r-md);min-width:400px;
     padding:14px;
+    max-width:520px;
+  }
+  .qm-primary-actions{
+    grid-template-columns:repeat(5,1fr);
+    gap:4px;
+  }
+  .qm-secondary-actions{
+    grid-template-columns:repeat(4,1fr);
   }
   .quick-menu::before{display:none}
   .quick-menu.open{animation:scaleIn .22s var(--ease-spring);transform-origin:top left;max-height:50dvh}
@@ -1814,9 +1922,59 @@ svg use{pointer-events:none}
   .empty-state{padding:40px 24px 60px}
 }
 
+/* ===== Page Transitions (View Transitions API) ===== */
+::view-transition-old(root){
+  animation:fade-slide-out .28s ease both;
+}
+::view-transition-new(root){
+  animation:fade-slide-in .32s cubic-bezier(.22,1,.36,1) both;
+}
+
+@keyframes fade-slide-in{
+  from{opacity:0;transform:translateX(20px)}
+}
+@keyframes fade-slide-out{
+  to{opacity:0;transform:translateX(-16px)}
+}
+
+/* ===== Micro-interactions: refined button feedback ===== */
+.btn:active,.btn-s:active{
+  transform:scale(.96);
+}
+.pill-btn:active{
+  transform:scale(.95);
+}
+.nav-item:active{
+  transform:scale(.97);
+}
+.tab:active{
+  transform:scale(.94);
+}
+.sent.active{
+  animation:sentPulse .35s var(--ease-spring);
+}
+@keyframes sentPulse{
+  0%{background:rgba(201,169,97,.25)}
+  100%{background:rgba(201,169,97,.12)}
+}
+
+/* Skeleton loading shimmer for book cards */
+@keyframes shimmer{
+  0%{background-position:-200% 0}
+  100%{background-position:200% 0}
+}
+.skeleton{
+  background:linear-gradient(90deg, var(--bg3) 25%, var(--bg4) 50%, var(--bg3) 75%);
+  background-size:200% 100%;
+  animation:shimmer 1.8s ease-in-out infinite;
+  border-radius:var(--r-sm);
+}
+
 /* ===== Reduced motion ===== */
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}
+  .content.active{animation:none}
+  ::view-transition-old(root),::view-transition-new(root){animation:none}
 }
 
 /* ===== Settings: pin-defaults toggle + disabled inputs ===== */

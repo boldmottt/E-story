@@ -322,6 +322,16 @@ let App = {
     }
     
     const doSwitch = () => {
+      // Set navigation direction for view transitions
+      const depth = { bookshelf: 0, reader: 1, vocabulary: 0, queue: 0, highlights: 0,
+        history: 0, report: 0, diagnosis: 0, settings: 0 };
+      const from = depth[this.currentView] ?? 0;
+      const to = depth[view] ?? 0;
+      let navDir = 'lateral';
+      if (to > from) navDir = 'forward';
+      else if (to < from) navDir = 'back';
+      document.documentElement.dataset.nav = navDir;
+      
       this.currentView = view;
       document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.view === view));
       document.querySelectorAll('.tab[data-view]').forEach(n => n.classList.toggle('active', n.dataset.view === view));
@@ -1042,7 +1052,8 @@ let App = {
     }
     const result = $('hint-result');
     result.style.display = 'block';
-    result.textContent = '단어 뜻 불러오는 중...';
+    result.className = 'qm-hint-result loading';
+    result.textContent = '';
     this._logHelp('dictionaryClicks');
     const hint = await AI.wordHint(word, this.selectedSentence.text);
     if (hint.error) {
@@ -1067,7 +1078,8 @@ let App = {
   async grammarHint() {
     const result = $('hint-result');
     result.style.display = 'block';
-    result.textContent = '분석 중...';
+    result.className = 'qm-hint-result loading';
+    result.textContent = '';
     this._logHelp('helpStepsUsed');
     const data = await AI.grammarHint(this.selectedSentence.text);
     if (data.error) {
@@ -1080,7 +1092,8 @@ let App = {
   async sentenceGist() {
     const result = $('hint-result');
     result.style.display = 'block';
-    result.textContent = '요약 중...';
+    result.className = 'qm-hint-result loading';
+    result.textContent = '';
     this._logHelp('translationClicks');
     const data = await AI.sentenceGist(this.selectedSentence.text);
     if (data.error) {
@@ -1094,7 +1107,8 @@ let App = {
   async easyEnglish() {
     const result = $('hint-result');
     result.style.display = 'block';
-    result.textContent = '쉬운 영어로 바꾸는 중...';
+    result.className = 'qm-hint-result loading';
+    result.textContent = '';
     if (this.currentSessionId && typeof bumpSessionCounter === 'function') {
       bumpSessionCounter(this.currentSessionId, 'helpStepsUsed');
     }
@@ -1110,7 +1124,8 @@ let App = {
   async chunkReading() {
     const result = $('hint-result');
     result.style.display = 'block';
-    result.textContent = '끊어 읽는 중...';
+    result.className = 'qm-hint-result loading';
+    result.textContent = '';
     this._logHelp('helpStepsUsed');
     const data = await AI.chunkReading(this.selectedSentence.text);
     if (data.error) {
@@ -1126,7 +1141,8 @@ let App = {
   async koreanGrammar() {
     const result = $('hint-result');
     result.style.display = 'block';
-    result.textContent = '한국인 포인트 분석 중...';
+    result.className = 'qm-hint-result loading';
+    result.textContent = '';
     this._logHelp('helpStepsUsed');
     const data = await AI.koreanGrammar(this.selectedSentence.text);
     if (data.error) {

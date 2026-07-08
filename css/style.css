@@ -1923,19 +1923,26 @@ svg use{pointer-events:none}
 }
 
 /* ===== Page Transitions (View Transitions API) ===== */
-::view-transition-old(root){
-  animation:fade-slide-out .28s ease both;
+@media (prefers-reduced-motion: no-preference){
+  ::view-transition-old(root),::view-transition-new(root){
+    animation-duration:.32s;animation-timing-function:var(--ease-out);
+  }
+  /* Forward: slide in from right, slide out to left */
+  html[data-nav="forward"]::view-transition-new(root){animation-name:vt-in-right}
+  html[data-nav="forward"]::view-transition-old(root){animation-name:vt-out-left}
+  /* Back: reverse direction */
+  html[data-nav="back"]::view-transition-new(root){animation-name:vt-in-left}
+  html[data-nav="back"]::view-transition-old(root){animation-name:vt-out-right}
+  /* Lateral: tabs — fade only */
+  html[data-nav="lateral"]::view-transition-old(root){animation-name:vt-fade-out}
+  html[data-nav="lateral"]::view-transition-new(root){animation-name:vt-fade-in}
 }
-::view-transition-new(root){
-  animation:fade-slide-in .32s cubic-bezier(.22,1,.36,1) both;
-}
-
-@keyframes fade-slide-in{
-  from{opacity:0;transform:translateX(20px)}
-}
-@keyframes fade-slide-out{
-  to{opacity:0;transform:translateX(-16px)}
-}
+@keyframes vt-in-right{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:translateX(0)}}
+@keyframes vt-out-left{to{opacity:0;transform:translateX(-16px)}}
+@keyframes vt-in-left{from{opacity:0;transform:translateX(-24px)}to{opacity:1;transform:translateX(0)}}
+@keyframes vt-out-right{to{opacity:0;transform:translateX(16px)}}
+@keyframes vt-fade-in{from{opacity:0}}
+@keyframes vt-fade-out{to{opacity:0}}
 
 /* ===== Micro-interactions: refined button feedback ===== */
 .btn:active,.btn-s:active{
@@ -1957,6 +1964,30 @@ svg use{pointer-events:none}
   0%{background:rgba(201,169,97,.25)}
   100%{background:rgba(201,169,97,.12)}
 }
+
+/* Loading skeleton for hint results */
+.qm-hint-result.loading{
+  min-height:36px;
+  background:linear-gradient(90deg, var(--bg4) 25%, var(--bg5) 50%, var(--bg4) 75%);
+  background-size:200% 100%;
+  animation:shimmer 1.8s ease-in-out infinite;
+  border-radius:var(--r-sm);
+}
+
+/* Book card stagger entrance */
+@keyframes cardStagger{
+  from{opacity:0;transform:translateY(8px)}
+  to{opacity:1;transform:translateY(0)}
+}
+.book-card{
+  animation:cardStagger .4s var(--ease-out) both;
+}
+.book-card:nth-child(2){animation-delay:.04s}
+.book-card:nth-child(3){animation-delay:.08s}
+.book-card:nth-child(4){animation-delay:.12s}
+.book-card:nth-child(5){animation-delay:.16s}
+.book-card:nth-child(6){animation-delay:.20s}
+.book-card:nth-child(7){animation-delay:.24s}
 
 /* Skeleton loading shimmer for book cards */
 @keyframes shimmer{

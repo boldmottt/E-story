@@ -32,7 +32,7 @@
   --tx:        #F1EADC;
   --tx1:       #F1EADC;
   --tx2:       #A89E8C;
-  --tx3:       #6F6655;
+  --tx3:       #8A8072;  /* bumped for WCAG AA (~4.5:1 on bg) */
   --tx-warm:   #ECE3D2;
 
   /* ── Accent: cultured gold, used sparingly */
@@ -235,7 +235,7 @@ svg use{pointer-events:none}
   font-family:var(--font-read);
   font-size:var(--t-3xl);
   font-weight:600;
-  letter-spacing:-.03em;
+  letter-spacing:var(--ls-tight);
   line-height:1.05;
   color:var(--tx);
   font-feature-settings:"ss01","onum","kern";
@@ -486,12 +486,12 @@ svg use{pointer-events:none}
   flex:1;min-width:0;
 }
 .continue-card .cc-label{
-  font-size:11px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;
+  font-size:11px;font-weight:500;letter-spacing:var(--ls-caps);text-transform:uppercase;
   color:var(--a0);margin-bottom:4px;
 }
 .continue-card .cc-title{
   font-family:var(--font-read);
-  font-size:var(--t-xl);font-weight:600;letter-spacing:-.02em;line-height:1.2;
+  font-size:var(--t-xl);font-weight:600;letter-spacing:var(--ls-snug);line-height:1.2;
   color:var(--tx);margin-bottom:6px;
   display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;
 }
@@ -522,13 +522,14 @@ svg use{pointer-events:none}
   -webkit-tap-highlight-color:transparent;
   box-shadow:inset 0 1px 0 rgba(255,240,210,0.025), 0 2px 8px rgba(17,10,4,0.25);
 }
-.book-card:hover,.book-card:active{
+.book-card:hover{
   transform:translateY(-3px);border-color:rgba(201,169,97,0.35);
   background:linear-gradient(135deg, var(--bg4), var(--bg3));
   box-shadow:inset 0 1px 0 rgba(255,240,210,0.05), 0 12px 28px rgba(17,10,4,0.5);
 }
 .book-card:active{
   transform:translateY(-1px);
+  background:linear-gradient(135deg, var(--bg3), var(--bg2));
   box-shadow:0 3px 8px rgba(17,10,4,0.35);
 }
 

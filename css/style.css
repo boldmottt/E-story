@@ -821,7 +821,7 @@ svg use{pointer-events:none}
   display:none;
   left:0;right:0;bottom:calc(var(--tabbar-h) + var(--safe-bottom));
 }
-.quick-menu.open{display:block;animation:sheetUp .3s var(--ease-out);max-height:50dvh;overflow-y:auto}
+.quick-menu.open{display:block;animation:sheetUp .3s var(--ease-out);max-height:50dvh;overflow-y:auto;overscroll-behavior:contain}
 .quick-menu::before{
   content:'';display:block;width:36px;height:4px;border-radius:var(--r-pill);
   background:var(--bd3);margin:0 auto 10px;

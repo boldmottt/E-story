@@ -978,6 +978,13 @@ let App = {
     
     menu.classList.add('open');
 
+    // Lock background scroll while menu is open (iOS Safari fix)
+    const stage = document.querySelector('.stage');
+    if (stage && window.matchMedia('(max-width:1023px)').matches) {
+      this._savedScrollY = stage.scrollTop;
+      stage.style.overflow = 'hidden';
+    }
+
     // Swipe-down to dismiss (mobile)
     if (window.matchMedia('(max-width:1023px)').matches) {
       let startY = 0, dy = 0, dragging = false;
@@ -1104,6 +1111,14 @@ let App = {
     if (menu) {
       menu.classList.remove('open');
       menu.style.transform = '';
+    }
+    // Unlock background scroll
+    const stage = document.querySelector('.stage');
+    if (stage && stage.style.overflow === 'hidden') {
+      stage.style.overflow = '';
+      if (this._savedScrollY != null) {
+        stage.scrollTop = this._savedScrollY;
+      }
     }
     this.selectedWord = null;
   },

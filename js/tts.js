@@ -97,6 +97,7 @@ const TTS = {
   },
 
   _readNext(onDone) {
+    this._onDone = onDone;
     if (this._sentenceIndex >= this._sentences.length || !this._isReading) {
       this._isReading = false;
       if (onDone) onDone();
@@ -118,7 +119,8 @@ const TTS = {
     const estDuration = Math.max(3000, text.length * 80 / this._rate);
     clearTimeout(this._watchdog);
     this._watchdog = setTimeout(() => {
-      if (!this._isReading) return;
+      if (!this._isReading || this._isPaused) return;
+      this._synth.cancel();
       this._sentenceIndex++;
       this._readNext(onDone);
     }, estDuration * 2);
@@ -146,6 +148,7 @@ const TTS = {
     if (this._synth?.speaking && !this._synth.paused) {
       this._synth.pause();
       this._isPaused = true;
+      clearTimeout(this._watchdog);
     }
   },
 
@@ -153,6 +156,18 @@ const TTS = {
     if (this._synth?.paused) {
       this._synth.resume();
       this._isPaused = false;
+      // Restart watchdog from resume point (use same generous estimate)
+      if (this._currentUtterance) {
+        const text = this._currentUtterance.text || '';
+        const estDuration = Math.max(3000, text.length * 80 / this._rate);
+        clearTimeout(this._watchdog);
+        this._watchdog = setTimeout(() => {
+          if (!this._isReading || this._isPaused) return;
+          this._synth.cancel();
+          this._sentenceIndex++;
+          this._readNext(this._onDone);
+        }, estDuration * 2);
+      }
     }
   },
 
@@ -163,6 +178,7 @@ const TTS = {
       this._isPaused = false;
       this._currentUtterance = null;
       this._onSentenceEnd = null;
+      this._onDone = null;
       this._sentences = [];
       this._sentenceIndex = 0;
       clearTimeout(this._watchdog);

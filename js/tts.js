@@ -104,7 +104,8 @@ const TTS = {
     }
     if (this._onSentenceEnd) this._onSentenceEnd(this._sentenceIndex);
     
-    const u = new SpeechSynthesisUtterance(this._sentences[this._sentenceIndex]);
+    const text = this._sentences[this._sentenceIndex];
+    const u = new SpeechSynthesisUtterance(text);
     u.lang = 'en-US';
     u.rate = this._rate;
     const voice = this.getEnglishVoice();
@@ -112,12 +113,29 @@ const TTS = {
     this._currentUtterance = u;
     this._isPaused = false;
     
+    // H2: Watchdog timer for Chrome's silent-stop bug (~15s+ utterances)
+    // If onend doesn't fire within the estimated time + margin, force-advance.
+    const estDuration = Math.max(3000, text.length * 80 / this._rate);
+    clearTimeout(this._watchdog);
+    this._watchdog = setTimeout(() => {
+      if (!this._isReading) return;
+      this._sentenceIndex++;
+      this._readNext(onDone);
+    }, estDuration * 2);
+    
+    let ended = false;
     u.onend = () => {
+      if (ended) return;
+      ended = true;
+      clearTimeout(this._watchdog);
       if (!this._isReading) return;
       this._sentenceIndex++;
       this._readNext(onDone);
     };
     u.onerror = () => {
+      if (ended) return;
+      ended = true;
+      clearTimeout(this._watchdog);
       this._isReading = false;
       if (onDone) onDone();
     };
@@ -143,6 +161,11 @@ const TTS = {
       this._synth.cancel();
       this._isReading = false;
       this._isPaused = false;
+      this._currentUtterance = null;
+      this._onSentenceEnd = null;
+      this._sentences = [];
+      this._sentenceIndex = 0;
+      clearTimeout(this._watchdog);
     }
   },
 

@@ -325,7 +325,10 @@ let App = {
 
   switchView(view) {
     // Leaving the reader ends the active reading session (dependency logging).
-    if (this.currentView === 'reader' && view !== 'reader') this._endReadingSession();
+    if (this.currentView === 'reader' && view !== 'reader') {
+      this._endReadingSession();
+      TTS.stop();
+    }
     // Floating surfaces belong to the view they were opened from.
     if (view !== 'reader') {
       $('study-panel')?.classList.remove('open');
@@ -1070,25 +1073,43 @@ let App = {
     this.selectedWord = null;
   },
 
+  // Shared hint runner: loading → AI call → format → cleanup
+  async _runHint(aiFn, formatFn, logType) {
+    const result = $('hint-result');
+    result.style.display = 'block';
+    result.innerHTML = '';
+    result.classList.add('loading');
+    if (logType) this._logHelp(logType);
+    try {
+      const data = await aiFn();
+      result.classList.remove('loading');
+      if (data.error) {
+        result.textContent = data.message || '오류가 발생했어요. 잠시 후 다시 시도해주세요.';
+        return;
+      }
+      formatFn(result, data);
+    } catch (err) {
+      result.classList.remove('loading');
+      result.textContent = '오류가 발생했어요. 잠시 후 다시 시도해주세요.';
+      console.warn('[runHint]', err);
+    }
+  },
+
   async wordHint(targetWord) {
     const word = targetWord || this.selectedWord;
     if (!word) {
       this.showToast('문장에서 단어를 클릭해주세요!', 'info');
       return;
     }
-    const result = $('hint-result');
-    result.style.display = 'block';
-    result.innerHTML = '';
-    result.classList.add('loading');
-    this._logHelp('dictionaryClicks');
-    const hint = await AI.wordHint(word, this.selectedSentence.text);
-    if (hint.error) {
-      result.textContent = '뜻을 불러오지 못했어요. 잠시 후 다시 시도해주세요.';
-      return;
-    }
-    const meaning = hint.meaningKo || '';
-    result.innerHTML = `<b>${escapeHtml(word)}</b>: ${escapeHtml(meaning)} <span style="color:var(--tx3)">(${escapeHtml(hint.partOfSpeech || '')})</span>`
-      + ` <button class="qm-vocab-add" data-word="${escapeHtml(word)}" data-meaning="${escapeHtml(meaning)}">+ 단어장</button>`;
+    await this._runHint(
+      () => AI.wordHint(word, this.selectedSentence.text),
+      (result, data) => {
+        const meaning = data.meaningKo || '';
+        result.innerHTML = `<b>${escapeHtml(word)}</b>: ${escapeHtml(meaning)} <span style="color:var(--tx3)">(${escapeHtml(data.partOfSpeech || '')})</span>`
+          + ` <button class="qm-vocab-add" data-word="${escapeHtml(word)}" data-meaning="${escapeHtml(meaning)}">+ 단어장</button>`;
+      },
+      'dictionaryClicks'
+    );
   },
 
   async saveWordDirect(word, meaning) {
@@ -1102,82 +1123,63 @@ let App = {
   },
 
   async grammarHint() {
-    const result = $('hint-result');
-    result.style.display = 'block';
-    result.innerHTML = '';
-    result.classList.add('loading');
-    this._logHelp('helpStepsUsed');
-    const data = await AI.grammarHint(this.selectedSentence.text);
-    if (data.error) {
-      result.textContent = (data.message || '분석 실패');
-      return;
-    }
-    result.innerHTML = `<b>문장 구조:</b> ${escapeHtml(data.structure)}<br><b>시제:</b> ${escapeHtml(data.tense)}`;
+    await this._runHint(
+      () => AI.grammarHint(this.selectedSentence.text),
+      (result, data) => {
+        result.innerHTML = `<b>문장 구조:</b> ${escapeHtml(data.structure)}<br><b>시제:</b> ${escapeHtml(data.tense)}`;
+      },
+      'helpStepsUsed'
+    );
   },
 
   async sentenceGist() {
-    const result = $('hint-result');
-    result.style.display = 'block';
-    result.innerHTML = '';
-    result.classList.add('loading');
-    this._logHelp('translationClicks');
-    const data = await AI.sentenceGist(this.selectedSentence.text);
-    if (data.error) {
-      result.textContent = (data.message || '요약 실패');
-      return;
-    }
-    result.textContent = `📋 ${data.gistKo}`;
+    await this._runHint(
+      () => AI.sentenceGist(this.selectedSentence.text),
+      (result, data) => {
+        result.textContent = `📋 ${data.gistKo}`;
+      },
+      'translationClicks'
+    );
   },
 
   // 한국어로 바로 번역하지 않고, 더 쉬운 영어로 같은 뜻을 보여준다.
   async easyEnglish() {
-    const result = $('hint-result');
-    result.style.display = 'block';
-    result.innerHTML = '';
-    result.classList.add('loading');
     if (this.currentSessionId && typeof bumpSessionCounter === 'function') {
       bumpSessionCounter(this.currentSessionId, 'helpStepsUsed');
     }
-    const data = await AI.easyEnglish(this.selectedSentence.text);
-    if (data.error) {
-      result.textContent = (data.message || '실패');
-      return;
-    }
-    result.textContent = `🟢 ${data.easyEn}`;
+    await this._runHint(
+      () => AI.easyEnglish(this.selectedSentence.text),
+      (result, data) => {
+        result.textContent = `🟢 ${data.easyEn}`;
+      },
+      'helpStepsUsed'
+    );
   },
 
   // 영어 어순 그대로 의미 단위로 끊어 보여준다(후치수식·관계절 훈련).
   async chunkReading() {
-    const result = $('hint-result');
-    result.style.display = 'block';
-    result.innerHTML = '';
-    result.classList.add('loading');
-    this._logHelp('helpStepsUsed');
-    const data = await AI.chunkReading(this.selectedSentence.text);
-    if (data.error) {
-      result.textContent = (data.message || '실패');
-      return;
-    }
-    result.innerHTML = `<div class="chunk-list">` + data.groups.map(g =>
-      `<div class="chunk-row"><span class="chunk-en">${escapeHtml(g.en || '')}</span><span class="chunk-ko">${escapeHtml(g.ko || '')}</span></div>`
-    ).join('') + `</div>`;
+    await this._runHint(
+      () => AI.chunkReading(this.selectedSentence.text),
+      (result, data) => {
+        result.innerHTML = `<div class="chunk-list">` + data.groups.map(g =>
+          `<div class="chunk-row"><span class="chunk-en">${escapeHtml(g.en || '')}</span><span class="chunk-ko">${escapeHtml(g.ko || '')}</span></div>`
+        ).join('') + `</div>`;
+      },
+      'helpStepsUsed'
+    );
   },
 
   // 한국인이 약한 포인트(대명사 지시·완료시제·후치수식·무생물 주어 등)를 짚어준다.
   async koreanGrammar() {
-    const result = $('hint-result');
-    result.style.display = 'block';
-    result.innerHTML = '';
-    result.classList.add('loading');
-    this._logHelp('helpStepsUsed');
-    const data = await AI.koreanGrammar(this.selectedSentence.text);
-    if (data.error) {
-      result.textContent = (data.message || '실패');
-      return;
-    }
-    result.innerHTML = data.points.map(p =>
-      `<div class="kg-row"><span class="kg-type">${escapeHtml(p.type || '')}</span><div class="kg-ko">${escapeHtml(p.ko || '')}</div></div>`
-    ).join('');
+    await this._runHint(
+      () => AI.koreanGrammar(this.selectedSentence.text),
+      (result, data) => {
+        result.innerHTML = data.points.map(p =>
+          `<div class="kg-row"><span class="kg-type">${escapeHtml(p.type || '')}</span><div class="kg-ko">${escapeHtml(p.ko || '')}</div></div>`
+        ).join('');
+      },
+      'helpStepsUsed'
+    );
   },
 
 

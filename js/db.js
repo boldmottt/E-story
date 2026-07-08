@@ -44,36 +44,41 @@ async function addBook(file, content) {
   // Split into chunks (chapters/sections)
   const chunks = splitIntoChunks(content);
 
-  // H2/M9: Use bulkAdd for sentences instead of serial adds
+  // Bulk prepare sentences + add chunks
   const allSentences = [];
   let wordCount = 0;
   let longSentenceCount = 0;
 
-  for (let i = 0; i < chunks.length; i++) {
-    const cid = await DB.chunks.add({
-      bookId: id, index: i, title: chunks[i].title || `Chapter ${i+1}`,
-      content: chunks[i].text, startOffset: chunks[i].start, endOffset: chunks[i].end,
-      createdAt: Date.now()
-    });
-    // Split chunk into sentences
-    const sents = splitSentences(chunks[i].text);
-    for (let j = 0; j < sents.length; j++) {
-      const words = sents[j].text.split(/\s+/).filter(Boolean).length;
-      wordCount += words;
-      if (words > 25) longSentenceCount++;
-      allSentences.push({
-        bookId: id, chunkId: cid, index: j,
-        text: sents[j].text, para: sents[j].para, startOffset: 0, endOffset: 0
+  try {
+    for (let i = 0; i < chunks.length; i++) {
+      const cid = await DB.chunks.add({
+        bookId: id, index: i, title: chunks[i].title || `Chapter ${i+1}`,
+        content: chunks[i].text, startOffset: chunks[i].start, endOffset: chunks[i].end,
+        createdAt: Date.now()
       });
+      // Split chunk into sentences
+      const sents = splitSentences(chunks[i].text);
+      for (let j = 0; j < sents.length; j++) {
+        const words = sents[j].text.split(/\s+/).filter(Boolean).length;
+        wordCount += words;
+        if (words > 25) longSentenceCount++;
+        allSentences.push({
+          bookId: id, chunkId: cid, index: j,
+          text: sents[j].text, para: sents[j].para, startOffset: 0, endOffset: 0
+        });
+      }
     }
-  }
 
-  // Bulk add all sentences at once (M9 fix)
-  if (allSentences.length) {
-    // Split into chunks of 500 to avoid write limits
-    for (let i = 0; i < allSentences.length; i += 500) {
-      await DB.sentences.bulkAdd(allSentences.slice(i, i + 500));
+    // Bulk add all sentences at once (M9 fix)
+    if (allSentences.length) {
+      for (let i = 0; i < allSentences.length; i += 500) {
+        await DB.sentences.bulkAdd(allSentences.slice(i, i + 500));
+      }
     }
+  } catch (err) {
+    // C3: on any upload failure, clean up the partial book to avoid zombie state
+    await deleteBook(id);
+    throw new Error(`책 업로드 실패: ${err.message}`);
   }
 
   const sentenceCount = allSentences.length;
@@ -225,26 +230,29 @@ async function countCardsAddedToday() {
   return await DB.vocabulary.filter(v => (v.addedAt || 0) >= startTs).count();
 }
 
-// Returns the card id on success. When the daily cap is reached for a GENUINELY
-// new card, returns { blocked:true, cap } so the UI can hard-stop the add.
-// Re-adding an existing word is never blocked (dedup path).
+// Wraps read+check+write for vocabulary cards in a single transaction so
+// concurrent adds from rapid clicks/TTS can't race past the daily cap.
 async function addWord(word, meaning, sentence, bookId, sentenceId, scene) {
-  const existing = await DB.vocabulary.where({word: word.toLowerCase(), bookId: bookId}).first();
-  if (existing) return existing.id;
-
   const settings = await getSettings();
   const cap = settings.dailyCardCap ?? 5;
-  if (cap > 0 && (await countCardsAddedToday()) >= cap) {
-    return { blocked: true, cap };
-  }
 
-  return await DB.vocabulary.add({
-    word: word.toLowerCase(), lemma: word.toLowerCase(), meaningKo: meaning,
-    definitionEn: '', partOfSpeech: '', pronunciation: '', audioUrl: '',
-    contextSentence: sentence, sceneNote: scene || '', characterNames: '', tone: '',
-    sentenceId: sentenceId || 0, bookId,
-    status: 'new', reviewBox: 0, nextReview: Date.now(),
-    addedAt: Date.now(), updatedAt: Date.now()
+  return await DB.transaction('rw', DB.vocabulary, async () => {
+    const existing = await DB.vocabulary.where({word: word.toLowerCase(), bookId: bookId}).first();
+    if (existing) return existing.id;
+
+    if (cap > 0) {
+      const count = await countCardsAddedToday();
+      if (count >= cap) return { blocked: true, cap };
+    }
+
+    return await DB.vocabulary.add({
+      word: word.toLowerCase(), lemma: word.toLowerCase(), meaningKo: meaning,
+      definitionEn: '', partOfSpeech: '', pronunciation: '', audioUrl: '',
+      contextSentence: sentence, sceneNote: scene || '', characterNames: '', tone: '',
+      sentenceId: sentenceId || 0, bookId,
+      status: 'new', reviewBox: 0, nextReview: Date.now(),
+      addedAt: Date.now(), updatedAt: Date.now()
+    });
   });
 }
 

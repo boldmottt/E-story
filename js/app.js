@@ -978,6 +978,35 @@ let App = {
     
     menu.classList.add('open');
 
+    // Swipe-down to dismiss (mobile)
+    if (window.matchMedia('(max-width:1023px)').matches) {
+      let startY = 0, dy = 0, dragging = false;
+      menu.addEventListener('touchstart', (e) => {
+        if (e.target.closest('.qm-btn, .qm-word, .qm-ask-send, .qm-vocab-add')) return;
+        startY = e.touches[0].clientY;
+        dragging = true;
+        menu.style.transition = 'none';
+      }, { once: true, passive: false });
+      const onMove = (e) => {
+        if (!dragging) return;
+        dy = Math.max(0, e.touches[0].clientY - startY);
+        menu.style.transform = `translateY(${dy}px)`;
+      };
+      document.addEventListener('touchmove', onMove, { passive: false });
+      const onEnd = () => {
+        dragging = false;
+        document.removeEventListener('touchmove', onMove);
+        menu.style.transition = 'transform .25s cubic-bezier(.16,1,.3,1)';
+        if (dy > 60) {
+          menu.style.transform = `translateY(${menu.offsetHeight}px)`;
+          setTimeout(() => this.closeQuickMenu(), 250);
+        } else {
+          menu.style.transform = '';
+        }
+      };
+      document.addEventListener('touchend', onEnd, { once: true, passive: false });
+    }
+
     // 모바일: 좌표 계산을 건너뛰고 CSS의 하단 고정(바텀시트) 배치를 따른다.
     if (window.matchMedia('(max-width:1023px)').matches) {
       menu.style.left = '';
@@ -1069,7 +1098,11 @@ let App = {
   },
 
   closeQuickMenu() {
-    $('quick-menu')?.classList.remove('open');
+    const menu = $('quick-menu');
+    if (menu) {
+      menu.classList.remove('open');
+      menu.style.transform = '';
+    }
     this.selectedWord = null;
   },
 

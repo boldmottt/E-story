@@ -1957,16 +1957,16 @@ svg use{pointer-events:none}
 .tab:active{
   transform:scale(.94);
 }
-.sent.active{
-  animation:sentPulse .35s var(--ease-spring);
+.sent.pulse{
+  animation:sentFlash .4s var(--ease-out);
 }
-@keyframes sentPulse{
-  0%{background:rgba(201,169,97,.25)}
-  100%{background:rgba(201,169,97,.12)}
+@keyframes sentFlash{
+  0%{background:rgba(201,169,97,.3)}
+  100%{background:transparent}
 }
 
 /* Loading skeleton for hint results */
-.qm-hint-result.loading{
+.qm-hint-result.loading:empty{
   min-height:36px;
   background:linear-gradient(90deg, var(--bg4) 25%, var(--bg5) 50%, var(--bg4) 75%);
   background-size:200% 100%;
@@ -1974,20 +1974,17 @@ svg use{pointer-events:none}
   border-radius:var(--r-sm);
 }
 
-/* Book card stagger entrance */
+/* Book card stagger entrance (first load only) */
+.bookshelf.first-load .book-card{
+  animation:cardStagger .4s var(--ease-out) both;
+}
+.bookshelf.first-load .book-card:nth-child(n){
+  animation-delay:calc(var(--stagger-i, 0) * 0.04s);
+}
 @keyframes cardStagger{
   from{opacity:0;transform:translateY(8px)}
   to{opacity:1;transform:translateY(0)}
 }
-.book-card{
-  animation:cardStagger .4s var(--ease-out) both;
-}
-.book-card:nth-child(2){animation-delay:.04s}
-.book-card:nth-child(3){animation-delay:.08s}
-.book-card:nth-child(4){animation-delay:.12s}
-.book-card:nth-child(5){animation-delay:.16s}
-.book-card:nth-child(6){animation-delay:.20s}
-.book-card:nth-child(7){animation-delay:.24s}
 
 /* Skeleton loading shimmer for book cards */
 @keyframes shimmer{

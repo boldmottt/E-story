@@ -157,6 +157,17 @@ let App = {
         return;
       }
       const action = e.target.closest('.qm-btn')?.dataset.action;
+      if (action === 'expand') {
+        const btnEl = e.target.closest('.qm-btn');
+        const sec = document.querySelector('.qm-secondary-actions');
+        if (btnEl && sec) {
+          const willOpen = sec.hasAttribute('hidden');
+          sec.toggleAttribute('hidden', !willOpen);
+          btnEl.classList.toggle('expanded', willOpen);
+          btnEl.setAttribute('aria-expanded', String(willOpen));
+        }
+        return;
+      }
       const handlers = {
         word: () => this.wordHint(),
         phraseMode: () => this.togglePhraseMode(),
@@ -172,6 +183,7 @@ let App = {
         queue: () => this.queueLater()
       };
       handlers[action]?.();
+      if (action) return;
     });
 
     // Close study panel
@@ -473,6 +485,15 @@ let App = {
     });
     
     grid.innerHTML = html;
+    
+    // Only stagger entrance on first load
+    if (this._firstShelfLoad !== false) {
+      this._firstShelfLoad = false;
+      // Assign stagger delays via JS for flexibility (supports any count)
+      const cards = grid.querySelectorAll('.book-card');
+      cards.forEach((card, i) => card.style.setProperty('--stagger-i', i));
+      grid.classList.add('first-load');
+    }
     
     // URL import + manual pick — bind after element exists
     $('url-load-btn')?.addEventListener('click', () => this.loadBookFromUrl());
@@ -879,9 +900,15 @@ let App = {
     this._phraseSel = [];
 
     // Highlight the sentence (locate by data-index — paging renders a subset)
-    document.querySelectorAll('.sent').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('.sent').forEach(s => s.classList.remove('active', 'pulse'));
     const activeEl = document.querySelector(`.sent[data-index="${index}"]`);
-    if (activeEl) activeEl.classList.add('active');
+    if (activeEl) {
+      activeEl.classList.add('active');
+      // Trigger pulse animation via class re-add
+      activeEl.classList.remove('pulse');
+      void activeEl.offsetWidth; // force reflow
+      activeEl.classList.add('pulse');
+    }
 
     const rect = activeEl?.getBoundingClientRect();
     const menu = $('quick-menu');
@@ -902,16 +929,16 @@ let App = {
           <span class="qm-ico"><svg class="ico-svg" width="16" height="16"><use href="#i-search"/></svg></span>
           <span class="qm-lbl">단어</span>
         </button>
-        <button class="qm-btn gist" data-action="gist" title="한국어 요지">
+        <button class="qm-btn gist" data-action="gist" title="문장 요지">
           <span class="qm-ico"><svg class="ico-svg" width="16" height="16"><use href="#i-globe"/></svg></span>
-          <span class="qm-lbl">번역</span>
+          <span class="qm-lbl">요지</span>
         </button>
         <button class="qm-btn grammar" data-action="grammar" title="구문 분석">
           <span class="qm-ico"><svg class="ico-svg" width="16" height="16"><use href="#i-target"/></svg></span>
           <span class="qm-lbl">구문</span>
         </button>
         <button class="qm-btn study" data-action="study" title="해석 훈련">
-          <span class="qm-ico"><svg class="ico-svg" width="16" height="16"><use href="#i-sparkle"/></svg></span>
+          <span class="qm-ico"><svg class="ico-svg" width="16" height="16"><use href="#i-mic"/></svg></span>
           <span class="qm-lbl">해석</span>
         </button>
         <!-- More toggle -->
@@ -1052,7 +1079,7 @@ let App = {
     }
     const result = $('hint-result');
     result.style.display = 'block';
-    result.className = 'qm-hint-result loading';
+    result.classList.add("loading");
     result.textContent = '';
     this._logHelp('dictionaryClicks');
     const hint = await AI.wordHint(word, this.selectedSentence.text);
@@ -1078,7 +1105,7 @@ let App = {
   async grammarHint() {
     const result = $('hint-result');
     result.style.display = 'block';
-    result.className = 'qm-hint-result loading';
+    result.classList.add("loading");
     result.textContent = '';
     this._logHelp('helpStepsUsed');
     const data = await AI.grammarHint(this.selectedSentence.text);
@@ -1092,7 +1119,7 @@ let App = {
   async sentenceGist() {
     const result = $('hint-result');
     result.style.display = 'block';
-    result.className = 'qm-hint-result loading';
+    result.classList.add("loading");
     result.textContent = '';
     this._logHelp('translationClicks');
     const data = await AI.sentenceGist(this.selectedSentence.text);
@@ -1107,7 +1134,7 @@ let App = {
   async easyEnglish() {
     const result = $('hint-result');
     result.style.display = 'block';
-    result.className = 'qm-hint-result loading';
+    result.classList.add("loading");
     result.textContent = '';
     if (this.currentSessionId && typeof bumpSessionCounter === 'function') {
       bumpSessionCounter(this.currentSessionId, 'helpStepsUsed');
@@ -1124,7 +1151,7 @@ let App = {
   async chunkReading() {
     const result = $('hint-result');
     result.style.display = 'block';
-    result.className = 'qm-hint-result loading';
+    result.classList.add("loading");
     result.textContent = '';
     this._logHelp('helpStepsUsed');
     const data = await AI.chunkReading(this.selectedSentence.text);
@@ -1141,7 +1168,7 @@ let App = {
   async koreanGrammar() {
     const result = $('hint-result');
     result.style.display = 'block';
-    result.className = 'qm-hint-result loading';
+    result.classList.add("loading");
     result.textContent = '';
     this._logHelp('helpStepsUsed');
     const data = await AI.koreanGrammar(this.selectedSentence.text);

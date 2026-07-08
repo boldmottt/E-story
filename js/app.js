@@ -983,12 +983,14 @@ let App = {
       let startY = 0, dy = 0, dragging = false;
       menu.addEventListener('touchstart', (e) => {
         if (e.target.closest('.qm-btn, .qm-word, .qm-ask-send, .qm-vocab-add')) return;
+        e.preventDefault();
         startY = e.touches[0].clientY;
         dragging = true;
         menu.style.transition = 'none';
       }, { once: true, passive: false });
       const onMove = (e) => {
         if (!dragging) return;
+        e.preventDefault();
         dy = Math.max(0, e.touches[0].clientY - startY);
         menu.style.transform = `translateY(${dy}px)`;
       };
